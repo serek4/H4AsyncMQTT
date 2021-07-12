@@ -122,7 +122,7 @@ class PangolinMQTT: public AardvarkTCP {
                 void               connect(std::string clientId="",bool session=true);
                 void               disconnect();
                 std::string        getClientId(){ return _clientId; }
-                size_t inline      getMaxPayloadSize(){ return _HAL_maxPayloadSize(); }
+                size_t inline      getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - PANGO_HEAP_SAFETY) /2 ; }
                 bool               mqttConnected(){ return _connected; }
                 void               onMqttConnect(PANGO_cbConnect callback){ _cbConnect=callback; }
                 void               onMqttDisconnect(PANGO_cbDisconnect callback){ _cbDisconnect=callback; }

@@ -42,3 +42,6 @@ SOFTWARE.
 // e.g 15 seconds = 30 poll "ticks"
 
 #define PANGO_MAX_RETRIES    2
+
+#define PANGO_HEAP_SAFETY 4096
+// we will try to never let the heap fall below this value

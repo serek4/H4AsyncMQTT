@@ -29,6 +29,7 @@ class mqttTraits {
                 
                 std::string     _decodestring(uint8_t** p);
         inline  uint16_t        _peek16(uint8_t* p){ return (*(p+1))|(*p << 8); }
+        
     public:
                 uint8_t*        data;
                 size_t          len;
@@ -53,7 +54,6 @@ class mqttTraits {
                 void            dump();
 #else
         std::string             getPktName(){ return stringFromInt(type,"02X"); }
-//                void            dump(){};
 #endif
         mqttTraits(){};
         mqttTraits(uint8_t* p,size_t s);
