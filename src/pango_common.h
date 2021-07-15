@@ -27,31 +27,31 @@ SOFTWARE.
 
 extern void dumphex(const uint8_t*,size_t);
 
-#if PANGO_DEBUG
+#if H4AMC_DEBUG
     template<int I, typename... Args>
-    void PANGO_PRINT(const char* fmt, Args... args) {
-        if (PANGO_DEBUG >= I) Serial.printf(std::string(std::string("PANG:%d: ")+fmt).c_str(),I,args...);
+    void H4AMC_PRINT(const char* fmt, Args... args) {
+        if (H4AMC_DEBUG >= I) Serial.printf(std::string(std::string("H4AMC:%d: ")+fmt).c_str(),I,args...);
     }
-    #define PANGO_PRINT1(...) PANGO_PRINT<1>(__VA_ARGS__)
-    #define PANGO_PRINT2(...) PANGO_PRINT<2>(__VA_ARGS__)
-    #define PANGO_PRINT3(...) PANGO_PRINT<3>(__VA_ARGS__)
-    #define PANGO_PRINT4(...) PANGO_PRINT<4>(__VA_ARGS__)
+    #define H4AMC_PRINT1(...) H4AMC_PRINT<1>(__VA_ARGS__)
+    #define H4AMC_PRINT2(...) H4AMC_PRINT<2>(__VA_ARGS__)
+    #define H4AMC_PRINT3(...) H4AMC_PRINT<3>(__VA_ARGS__)
+    #define H4AMC_PRINT4(...) H4AMC_PRINT<4>(__VA_ARGS__)
 
     template<int I>
-    void pango_dump(const uint8_t* p, size_t len) { if (PANGO_DEBUG >= I) dumphex(p,len); }
-    #define PANGO_DUMP3(p,l) pango_dump<3>((p),l)
-    #define PANGO_DUMP4(p,l) pango_dump<4>((p),l)
+    void pango_dump(const uint8_t* p, size_t len) { if (H4AMC_DEBUG >= I) dumphex(p,len); }
+    #define H4AMC_DUMP3(p,l) pango_dump<3>((p),l)
+    #define H4AMC_DUMP4(p,l) pango_dump<4>((p),l)
 #else
-    #define PANGO_PRINT1(...)
-    #define PANGO_PRINT2(...)
-    #define PANGO_PRINT3(...)
-    #define PANGO_PRINT4(...)
+    #define H4AMC_PRINT1(...)
+    #define H4AMC_PRINT2(...)
+    #define H4AMC_PRINT3(...)
+    #define H4AMC_PRINT4(...)
 
-    #define PANGO_DUMP3(...)
-    #define PANGO_DUMP4(...)
+    #define H4AMC_DUMP3(...)
+    #define H4AMC_DUMP4(...)
 #endif
 
-enum PANGO_MQTT_CNX_FLAG : uint8_t {
+enum H4AMC_MQTT_CNX_FLAG : uint8_t {
     USERNAME      = 0x80,
     PASSWORD      = 0x40,
     WILL_RETAIN   = 0x20,

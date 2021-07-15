@@ -26,7 +26,7 @@ SOFTWARE.
 #include <PangolinMQTT.h>
 #include <mqTraits.h>
 
-using PANGO_BLOCK_Q        = std::queue<mbx>;
+using H4AMC_BLOCK_Q        = std::queue<mbx>;
 
 class Packet {
     friend class PangolinMQTT;
@@ -35,11 +35,11 @@ class Packet {
                 uint16_t         _id=0; 
                 bool             _hasId=false;
                 uint8_t          _controlcode;
-                PANGO_BLOCK_Q    _blox;
+                H4AMC_BLOCK_Q    _blox;
                 uint32_t         _bs=0;
-                PANGO_FN_VOID    _begin=[]{};
-                PANGO_FN_U8PTRU8 _middle=[](uint8_t* p){ return p; };
-                PANGO_FN_U8PTR   _end=[](uint8_t* p,uint8_t* base){}; // lose this?
+                H4AMC_FN_VOID    _begin=[]{};
+                H4AMC_FN_U8PTRU8 _middle=[](uint8_t* p){ return p; };
+                H4AMC_FN_U8PTR   _end=[](uint8_t* p,uint8_t* base){}; // lose this?
 
                 void	         _build(bool hold=false);
                 void             _idGarbage(uint16_t id);

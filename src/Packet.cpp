@@ -43,7 +43,7 @@ void Packet::_build(bool hold){
     } while ( X > 0 );
     _bs+=1+rl.size();
     uint8_t* snd_buf=virgin=mbx::getMemory(_bs);
-    PANGO_PRINT4("PACKET CREATED @ 0x%08x len=%d\n",snd_buf,_bs);
+    H4AMC_PRINT4("PACKET CREATED @ 0x%08x len=%d\n",snd_buf,_bs);
     if(snd_buf){
         *snd_buf++=_controlcode;
         for(auto const& r:rl) *snd_buf++=r;
@@ -60,14 +60,19 @@ void Packet::_build(bool hold){
             _blox.pop();
         }
         _end(snd_buf,virgin);
-        if(!hold) PANGOV3->txdata(virgin,_bs,false);
+        if(!hold) {
+#if H4AMC_DEBUG
+            mqttTraits traits(virgin,_bs);
+#endif
+            H4AMCV3->txdata(virgin,_bs,false);
+        }
     }  
-    else PANGOV3->_notify(NOT_ENOUGH_MEMORY,_bs);
+    else H4AMCV3->_notify(H4AMC_NOT_ENOUGH_MEMORY,_bs);
 }
 
 void Packet::_idGarbage(uint16_t id){
     uint8_t  G[]={_controlcode,2,(id & 0xff00) >> 8,id & 0xff};
-    PANGOV3->txdata(&G[0],4,true);
+    H4AMCV3->txdata(&G[0],4,true);
 }
 
 void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
@@ -109,34 +114,34 @@ void Packet::_stringblock(const std::string& s){
 ConnectPacket::ConnectPacket(): Packet(CONNECT){
     _bs=10;
     _begin=[=]{
-        if(PANGOV3->_cleanSession) protocol[7]|=CLEAN_SESSION;
-        if(PANGOV3->_willRetain) protocol[7]|=WILL_RETAIN;
-        if(PANGOV3->_willQos) protocol[7]|=(PANGOV3->_willQos==1) ? WILL_QOS1:WILL_QOS2;
-        _stringblock(PANGOV3->_clientId);
-        if(PANGOV3->_willTopic.size()){
-            _stringblock(PANGOV3->_willTopic);
-            _stringblock(PANGOV3->_willPayload);
+        if(H4AMCV3->_cleanSession) protocol[7]|=CLEAN_SESSION;
+        if(H4AMCV3->_willRetain) protocol[7]|=WILL_RETAIN;
+        if(H4AMCV3->_willQos) protocol[7]|=(H4AMCV3->_willQos==1) ? WILL_QOS1:WILL_QOS2;
+        _stringblock(H4AMCV3->_clientId);
+        if(H4AMCV3->_willTopic.size()){
+            _stringblock(H4AMCV3->_willTopic);
+            _stringblock(H4AMCV3->_willPayload);
             protocol[7]|=WILL;
         }
-        if(PANGOV3->_username.size()){
-            _stringblock(PANGOV3->_username);
+        if(H4AMCV3->_username.size()){
+            _stringblock(H4AMCV3->_username);
             protocol[7]|=USERNAME;
         }
-        if(PANGOV3->_password.size()){
-            _stringblock(PANGOV3->_password);
+        if(H4AMCV3->_password.size()){
+            _stringblock(H4AMCV3->_password);
             protocol[7]|=PASSWORD;
         }
     };
     _middle=[=](uint8_t* p){
         memcpy(p,&protocol,8);p+=8;
-        return _poke16(p,PANGOV3->_keepalive);
+        return _poke16(p,H4AMCV3->_keepalive);
     };
     _build();
 }
 
 PublishPacket::PublishPacket(const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId):
     _topic(topic),_qos(qos),_retain(retain),_length(length),_dup(dup),_givenId(givenId),Packet(PUBLISH) {
-        if(length < PANGOV3->getMaxPayloadSize()){
+        if(length < H4AMCV3->getMaxPayloadSize()){
             _begin=[this]{ 
                 _stringblock(_topic.c_str());
                 _bs+=_length;
@@ -159,5 +164,5 @@ PublishPacket::PublishPacket(const char* topic, uint8_t qos, bool retain, const 
                 else if(_qos) PangolinMQTT::_outbound[_id]=T;
             };
             _build(_givenId);
-        } else PANGOV3->_notify(_givenId ? INBOUND_PUB_TOO_BIG:OUTBOUND_PUB_TOO_BIG,length);
+        } else H4AMCV3->_notify(_givenId ? H4AMC_INBOUND_PUB_TOO_BIG:H4AMC_OUTBOUND_PUB_TOO_BIG,length);
 }

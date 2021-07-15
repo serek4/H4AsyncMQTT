@@ -1,15 +1,16 @@
-#include <PangolinMQTT.h> 
+#include <PangolinMQTT.h>
+
+H4 h4(115200);
+
 PangolinMQTT mqttClient;
 
-#include <Ticker.h>
-
-Ticker PT1;
+//H4_TIMER PT1;
 //
 // if using TLS / https, edit pango_config.h and #define ASYNC_TCP_SSL_ENABLED 1
 // do the same in async_config.h of the PATCHED ESPAsyncTCP library!! 
 
 //#define MQTT_URL "https://192.168.1.21:8883"
-#define MQTT_URL "http://192.168.1.21:1883"
+#define MQTT_URL "http://192.168.1.4:1883"
 const uint8_t* cert=nullptr;
 
 // if you provide a valid certificate when connecting, it will be checked and fail on no match
@@ -31,32 +32,33 @@ const char* pload0="multi-line payload hex dumper which should split over severa
 const char* pload1="PAYLOAD QOS1";
 const char* pload2="Save the Pangolin!";
 
-void onMqttError(uint8_t e,uint32_t info){
-  Serial.printf("VALUE OF TCP_DISCONNECTED=%d\n",TCP_DISCONNECTED);
+void onMqttError(int e,int info){
+
   switch(e){
-    case VARK_TCP_DISCONNECTED:
+
+    case H4AT_TCP_DISCONNECTED:
         Serial.printf("ERROR: NOT CONNECTED info=%d\n",info);
         break;
-    case VARK_TCP_UNHANDLED:
+    case H4AT_TCP_UNHANDLED:
         Serial.printf("ERROR: UNHANDLED TCP ERROR info=%d\n",info);
         break;
-    case VARK_TLS_BAD_FINGERPRINT:
+    case H4AT_TLS_BAD_FINGERPRINT:
         Serial.printf("ERROR: TLS_BAD_FINGERPRINT info=%d\n",info);
         break;
-    case VARK_TLS_NO_FINGERPRINT:
+    case H4AT_TLS_NO_FINGERPRINT:
         Serial.printf("WARNING: NO FINGERPRINT, running insecure\n");
         break;
-    case VARK_TLS_UNWANTED_FINGERPRINT:
+    case H4AT_TLS_UNWANTED_FINGERPRINT:
         Serial.printf("WARNING: FINGERPRINT provided, insecure http:// given\n");
         break;
-    case VARK_TLS_NO_SSL:
+    case H4AT_TLS_NO_SSL:
         Serial.printf("ERROR: secure https:// requested, NO SSL COMPILED-IN: READ DOCS!\n");
         break;
-    case VARK_NO_SERVER_DETAILS: //  
+    case H4AT_NO_SERVER_DETAILS: //  
     //  99.99% unlikely to ever happen, make sure you call setServer before trying to connect!!!
         Serial.printf("ERROR:NO_SERVER_DETAILS info=%02x\n",info);
         break;
-    case VARK_INPUT_TOO_BIG: //  
+    case H4AT_INPUT_TOO_BIG: //  
     //  99.99% unlikely to ever happen, make sure you call setServer before trying to connect!!!
         Serial.printf("ERROR: RX msg(%d) that would 'break the bank'\n",info);
         break;    
@@ -115,6 +117,7 @@ void onMqttError(uint8_t e,uint32_t info){
     //  99.99% unlikely to ever happen, make sure you call setServer before trying to connect!!!
         Serial.printf("ERROR:NO_SERVER_DETAILS info=%02x\n",info);
         break;
+        */
     default:
       Serial.printf("UNKNOWN ERROR: %u extra info %d\n",e,info);
       break;
@@ -133,7 +136,7 @@ void onMqttConnect(bool session) {
   Serial.printf("USER: T=%u Publishing at QoS 2\n",millis());
   mqttClient.publish("test",pload2,strlen(pload2),2);
 
-  PT1.attach(10,[]{
+  h4.every(10000,[]{
     // simple way to publish int types  as strings using printf format
     mqttClient.publish("test",_HAL_freeHeap(),"%u"); 
     mqttClient.publish("test",-33); 
@@ -152,19 +155,19 @@ void onMqttDisconnect(int8_t reason) {
   Serial.printf("USER: Disconnected from MQTT reason=%d\n",reason);
 }
 
-void setup(){
+void h4setup(){
   Serial.begin(115200);
   delay(250); //why???
-  Serial.printf("\nPangolinMQTT v%s running @ debug level %d heap=%u\n",PANGO_VERSION,PANGO_DEBUG,ESP.getFreeHeap()); 
-  
+  Serial.printf("\nPangolinMQTT v%s running @ debug level %d heap=%u\n",H4AMC_VERSION,H4AMC_DEBUG,_HAL_freeHeap()); 
+
   mqttClient.onMqttError(onMqttError);
   mqttClient.onMqttConnect(onMqttConnect);
   mqttClient.onMqttDisconnect(onMqttDisconnect);
   mqttClient.onMqttMessage(onMqttMessage);
   mqttClient.setServer(MQTT_URL,mqAuth,mqPass,cert);
-  mqttClient.setWill("DIED",2,false,"probably still some bugs");
+/*    mqttClient.setWill("DIED",2,false,"probably still some bugs");
 //  mqttClient.setKeepAlive(RECONNECT_DELAY_M *3); // very rarely need to change this (if ever)
-
+*/
   WiFi.begin("XXXXXXXX","XXXXXXXX");
   while(WiFi.status()!=WL_CONNECTED){
     Serial.print(".");
@@ -173,7 +176,5 @@ void setup(){
   
   Serial.printf("WIFI CONNECTED IP=%s\n",WiFi.localIP().toString().c_str());
 
-  mqttClient.connect("Pangolin_101",START_WITH_CLEAN_SESSION);
+  mqttClient.connectMqtt("Pangolin_101",START_WITH_CLEAN_SESSION);
 }
-
-void loop() {}

@@ -1,6 +1,6 @@
 #include<mqTraits.h>
 
-#if PANGO_DEBUG
+#if H4AMC_DEBUG
     std::map<uint8_t,char*> mqttTraits::pktnames={
         {0x10,"CONNECT"},
         {0x20,"CONNACK"},
@@ -41,9 +41,9 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p),len(s){
         multiplier *= 128;
     } while ((encodedByte & 0x80) != 0);
 
-#if PANGO_DEBUG
-    if(s!=1+offset+remlen) PANGO_PRINT4("SANITY FAIL! s=%d RL=%d offset=%d L=%d\n",s,remlen,offset,1+offset+remlen);
-    else PANGO_PRINT4("LL s=%d RL=%d offset=%d L=%d\n",s,remlen,offset,1+offset+remlen);
+#if H4AMC_DEBUG
+    if(s!=1+offset+remlen) H4AMC_PRINT4("SANITY FAIL! s=%d RL=%d offset=%d L=%d\n",s,remlen,offset,1+offset+remlen);
+    else H4AMC_PRINT4("LL s=%d RL=%d offset=%d L=%d\n",s,remlen,offset,1+offset+remlen);
 #endif
 
     switch(type){
@@ -72,52 +72,52 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p),len(s){
             break;
     }
 
-#if PANGO_DEBUG
-    PANGO_PRINT1("MQTT %s\n",getPktName().data());
-    PANGO_PRINT2(" Data @ 0x%08x len=%d RL=%d\n",data,len,remlen);
-    PANGO_DUMP4(data,len);
+#if H4AMC_DEBUG
+    H4AMC_PRINT1("MQTT %s\n",getPktName().data());
+    H4AMC_PRINT2(" Data @ 0x%08x len=%d RL=%d\n",data,len,remlen);
+    H4AMC_DUMP4(data,len);
     switch(type){
         case CONNECT:
             {
                 uint8_t cf=data[9];
-                PANGO_PRINT3("  Protocol: %s\n",data[8]==4 ? "3.1.1":stringFromInt(data[8],"0x%02x").data());
-                PANGO_PRINT4("  Flags: %02x\n",cf);
-                PANGO_PRINT3("  Session: %s\n",((cf & CLEAN_SESSION) >> 1) ? "Clean":"Dirty");
-                PANGO_PRINT3("  Keepalive: %d\n",_peek16(&data[10]));
+                H4AMC_PRINT3("  Protocol: %s\n",data[8]==4 ? "3.1.1":stringFromInt(data[8],"0x%02x").data());
+                H4AMC_PRINT4("  Flags: %02x\n",cf);
+                H4AMC_PRINT3("  Session: %s\n",((cf & CLEAN_SESSION) >> 1) ? "Clean":"Dirty");
+                H4AMC_PRINT3("  Keepalive: %d\n",_peek16(&data[10]));
                 uint8_t* sp=&data[12];
-                PANGO_PRINT3("  ClientId: 0x%08x %s\n",sp,_decodestring(&sp).data());
+                H4AMC_PRINT3("  ClientId: 0x%08x %s\n",sp,_decodestring(&sp).data());
                 if(cf & WILL){
-                    PANGO_PRINT3("  Will Topic: 0x%08x %s\n",sp,_decodestring(&sp).data());
-                    if(cf & WILL_RETAIN) PANGO_PRINT3("  Will: RETAIN\n");
-                    PANGO_PRINT3("  Will QoS: %d\n",(cf >> 3) &0x3);
+                    H4AMC_PRINT3("  Will Topic: 0x%08x %s\n",sp,_decodestring(&sp).data());
+                    if(cf & WILL_RETAIN) H4AMC_PRINT3("  Will: RETAIN\n");
+                    H4AMC_PRINT3("  Will QoS: %d\n",(cf >> 3) &0x3);
                 } 
-                if(cf & USERNAME) PANGO_PRINT3("  Username: %s\n",_decodestring(&sp).data());
-                if(cf & PASSWORD) PANGO_PRINT3("  Password: %s\n",_decodestring(&sp).data());
+                if(cf & USERNAME) H4AMC_PRINT3("  Username: %s\n",_decodestring(&sp).data());
+                if(cf & PASSWORD) H4AMC_PRINT3("  Password: %s\n",_decodestring(&sp).data());
                 break;
             }
         case CONNACK:
             {
                 switch(data[3]){
                     case 0: // 0x00 Connection Accepted
-                        PANGO_PRINT3("  Session: %s\n",((data[2]) & 1) ? "Present":"None");
+                        H4AMC_PRINT3("  Session: %s\n",((data[2]) & 1) ? "Present":"None");
                         break;
                     case 1: // 0x01 Connection Refused, unacceptable protocol version
-                        PANGO_PRINT3("  Error: %s\n","unacceptable protocol version");
+                        H4AMC_PRINT3("  Error: %s\n","unacceptable protocol version");
                         break;
                     case 2: // 0x02 Connection Refused, identifier rejected
-                        PANGO_PRINT3("  Error: %s\n","client identifier rejected");
+                        H4AMC_PRINT3("  Error: %s\n","client identifier rejected");
                         break;
                     case 3: // 0x03 Connection Refused, Server unavailable
-                        PANGO_PRINT3("  Error: %s\n","Server unavailable");
+                        H4AMC_PRINT3("  Error: %s\n","Server unavailable");
                         break;
                     case 4: // 0x04 Connection Refused, bad user name or password
-                        PANGO_PRINT3("  Error: %s\n","bad user name or password");
+                        H4AMC_PRINT3("  Error: %s\n","bad user name or password");
                         break;
                     case 5: // 0x05 Connection Refused, not authorized
-                        PANGO_PRINT3("  Error: %s\n","not authorized");
+                        H4AMC_PRINT3("  Error: %s\n","not authorized");
                         break;
                     default: // ??????
-                        PANGO_PRINT3("  SOMETHING NASTY IN THE WOODSHED!!\n");
+                        H4AMC_PRINT3("  SOMETHING NASTY IN THE WOODSHED!!\n");
                         break;
                 }
             }
@@ -125,30 +125,30 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p),len(s){
         case SUBSCRIBE:
         case UNSUBSCRIBE:
             {
-                PANGO_PRINT3("  id: %d\n",id);
+                H4AMC_PRINT3("  id: %d\n",id);
                 uint8_t* payload=start()+2;
                 do {
                     uint16_t len=_peek16(payload);
                     payload+=2;
-                    string topic((const char*) payload,len);
+                    std::string topic((const char*) payload,len);
                     payload+=len;
                     if(type==SUBSCRIBE) {
                         uint8_t qos=*payload++;
-                        PANGO_PRINT3("  Topic: QoS%d %s\n",qos,topic.data());
+                        H4AMC_PRINT3("  Topic: QoS%d %s\n",qos,topic.data());
                     } 
-                    else PANGO_PRINT3("  Topic: %s\n",topic.data());
+                    else H4AMC_PRINT3("  Topic: %s\n",topic.data());
                 } while (payload < (data + len));
             }
             break;
         default:
             {
                 if(isPublish()){
-                    if(qos) PANGO_PRINT3("  id: %d\n",id);
-                    PANGO_PRINT3("  qos: %d\n",qos);
-                    if(dup) PANGO_PRINT3("  DUP\n");
-                    if(retain) PANGO_PRINT3("  RETAIN\n");
-                    PANGO_PRINT3("  Topic: %s\n",topic.data());
-                    PANGO_PRINT3("  Payload size: %d\n",plen);
+                    if(qos) H4AMC_PRINT3("  id: %d\n",id);
+                    H4AMC_PRINT3("  qos: %d\n",qos);
+                    if(dup) H4AMC_PRINT3("  DUP\n");
+                    if(retain) H4AMC_PRINT3("  RETAIN\n");
+                    H4AMC_PRINT3("  Topic: %s\n",topic.data());
+                    H4AMC_PRINT3("  Payload size: %d\n",plen);
                 }
             }
             break;

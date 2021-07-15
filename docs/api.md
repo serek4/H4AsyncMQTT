@@ -90,17 +90,17 @@ std::string getClientId(); // CHANGED IN V3
 size_t getMaxPayloadSize();
 
 bool mqttConnected(); // true when MQTT server up
-void onMqttConnect(PANGO_cbConnect callback); // mandatory: set connect handler V3: REPLACES onConnect
-void onMqttDisconnect(PANGO_cbDisconnect callback);// optional: set disconnect handler V3: REPLACES onDisconnect
-void onMqttError(PANGO_cbError callback);// optional: set error handler  V3: REPLACES onError
-void onMqttMessage(PANGO_cbMessage callback); // // mandatory if subscribing: set topic handler  V3: REPLACES onMessage
+void onMqttConnect(H4AMC_cbConnect callback); // mandatory: set connect handler V3: REPLACES onConnect
+void onMqttDisconnect(H4AMC_cbDisconnect callback);// optional: set disconnect handler V3: REPLACES onDisconnect
+void onMqttError(H4AMC_cbError callback);// optional: set error handler  V3: REPLACES onError
+void onMqttMessage(H4AMC_cbMessage callback); // // mandatory if subscribing: set topic handler  V3: REPLACES onMessage
 
 void publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0,  bool retain=false);
 void publish(const char* topic,const char* payload, size_t length, uint8_t qos=0,  bool retain=false);
 template<typename T>
 void publish(const char* topic,T v,const char* fmt="%d",uint8_t qos=0,bool retain=false);
 
-void setKeepAlive(uint16_t keepAlive); // probably best left alone... note actual rate is PANGO_POLL_RATE * keepAlive; and depends on your LwIP
+void setKeepAlive(uint16_t keepAlive); // probably best left alone... note actual rate is H4AMC_POLL_RATE * keepAlive; and depends on your LwIP
 void setServer(const char* url,const char* username="", const char* password = "",const uint8_t* fingerprint=nullptr); // V3: CHANGED
 void setWill(const char* topic, uint8_t qos, bool retain, const char* payload = nullptr); // optional
 
@@ -139,17 +139,17 @@ PangolinMQTT comes with some built-in diagnostics. These can be controlled by se
     4 - everything
 */
 
-#define PANGO_DEBUG 1
+#define H4AMC_DEBUG 1
 ```
 
-You can also include your own using `PANGO_PRINTx` functions (where x is 1-4).
-These operate just like `printf` but will only be compiled-in if the PANGO_DEBUG level is x or greater
+You can also include your own using `H4AMC_PRINTx` functions (where x is 1-4).
+These operate just like `printf` but will only be compiled-in if the H4AMC_DEBUG level is x or greater
 
 ```cpp
-PANGO_PRINT3("FATAL ERROR %d\n",errorcode); 
+H4AMC_PRINT3("FATAL ERROR %d\n",errorcode); 
 ```
 
-Will only be compiled if user sets PANGO_DEBUG to 3 or above
+Will only be compiled if user sets H4AMC_DEBUG to 3 or above
 
 
 

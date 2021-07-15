@@ -42,9 +42,9 @@ class mqttTraits {
                 uint8_t*        payload;
                 size_t          plen;
                 bool            pubrec;
-                size_t          retries=PANGO_MAX_RETRIES;
+                size_t          retries=H4AMC_MAX_RETRIES;
                 
-#if PANGO_DEBUG
+#if H4AMC_DEBUG
         static std::map<uint8_t,char*> pktnames;
         std::string             getPktName(){
             uint8_t t=type&0xf0;

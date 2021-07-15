@@ -40,75 +40,75 @@ SOFTWARE.
     #endif
 #endif
 
-#include<AardvarkTCP.h>
+#include<H4AsyncTCP.h>
 
-enum PANGO_FAILURE : uint8_t {
-    AARDVARK_NON_TCP_ERROR = VARK_MAX_ERROR,
-    TCP_DISCONNECTED,
-    MQTT_SERVER_UNAVAILABLE,
-    UNRECOVERABLE_CONNECT_FAIL,
-    TLS_BAD_FINGERPRINT,
-    TLS_NO_FINGERPRINT,
-    TLS_NO_SSL,
-    TLS_UNWANTED_FINGERPRINT,
-    SUBSCRIBE_FAIL,
-    INBOUND_QOS_ACK_FAIL,
-    OUTBOUND_QOS_ACK_FAIL,
-    INBOUND_PUB_TOO_BIG,
-    OUTBOUND_PUB_TOO_BIG,
-    BOGUS_PACKET,
-    X_INVALID_LENGTH,
-    NO_SERVER_DETAILS,
-    NOT_ENOUGH_MEMORY
+enum H4AMC_FAILURE {
+    H4AMC_DISCONNECTED = H4AMC_ERROR_BASE,
+    H4AMC_SERVER_UNAVAILABLE,
+    H4AMC_CONNECT_FAIL,
+    H4AMC_BAD_FINGERPRINT,
+    H4AMC_NO_FINGERPRINT,
+    H4AMC_NO_SSL,
+    H4AMC_UNWANTED_FINGERPRINT,
+    H4AMC_SUBSCRIBE_FAIL,
+    H4AMC_INBOUND_QOS_ACK_FAIL,
+    H4AMC_OUTBOUND_QOS_ACK_FAIL,
+    H4AMC_INBOUND_PUB_TOO_BIG,
+    H4AMC_OUTBOUND_PUB_TOO_BIG,
+    H4AMC_BOGUS_PACKET,
+    H4AMC_X_INVALID_LENGTH,
+    H4AMC_NOT_ENOUGH_MEMORY,
+    H4AMC_ERROR_MAX
 };
 
-#include<mbx.h>
 #include<mqTraits.h>
 
-using PANGO_FN_VOID        = std::function<void(void)>;
-using PANGO_FN_U8PTR       = std::function<void(uint8_t*,uint8_t* base)>;
-using PANGO_FN_U8PTRU8     = std::function<uint8_t*(uint8_t*)>;
+using H4AMC_FN_VOID        = std::function<void(void)>;
+using H4AMC_FN_U8PTR       = std::function<void(uint8_t*,uint8_t* base)>;
+using H4AMC_FN_U8PTRU8     = std::function<uint8_t*(uint8_t*)>;
 
-using PANGO_PACKET_MAP      =std::map<uint16_t,mqttTraits>; // indexed by messageId
-using PANGO_cbConnect       =std::function<void(bool)>;
-using PANGO_cbDisconnect    =std::function<void(int8_t)>;
-using PANGO_cbError         =std::function<void(uint8_t,uint32_t)>;
-using PANGO_cbMessage       =std::function<void(const char* topic, const uint8_t* payload, size_t len,uint8_t qos,bool retain,bool dup)>;
+using H4AMC_PACKET_MAP      =std::map<uint16_t,mqttTraits>; // indexed by messageId
+using H4AMC_cbConnect       =std::function<void(bool)>;
+using H4AMC_cbDisconnect    =std::function<void(int8_t)>;
+using H4AMC_cbError         =std::function<void(int, int)>;
+using H4AMC_cbMessage       =std::function<void(const char* topic, const uint8_t* payload, size_t len,uint8_t qos,bool retain,bool dup)>;
 
 class Packet;
 class ConnectPacket;
 class PublishPacket;
 
-class PangolinMQTT: public AardvarkTCP {
+class PangolinMQTT: public H4AsyncTCP {
         friend class Packet;
         friend class ConnectPacket;
         friend class PublishPacket;
         friend class mqttTraits;
 
-               PANGO_cbConnect     _cbConnect=nullptr;
-               PANGO_cbDisconnect  _cbDisconnect=nullptr;
-               PANGO_cbError       _cbError=nullptr;
-               PANGO_cbMessage     _cbMessage=nullptr;
+               H4AMC_cbConnect     _cbConnect=nullptr;
+               H4AMC_cbDisconnect  _cbDisconnect=nullptr;
+               H4AMC_cbError       _cbError=nullptr;
+               H4AMC_cbMessage     _cbMessage=nullptr;
                bool                _cleanSession=true;
                std::string         _clientId;
                bool                _connected=false;
-               uint16_t            _keepalive=15 * PANGO_POLL_RATE;
-               std::string         _password;
-        static PANGO_PACKET_MAP    _inbound;
+        static H4_INT_MAP          _errorNames;
+        static H4AMC_PACKET_MAP    _inbound;
+               uint16_t            _keepalive=15 * H4AMC_POLL_RATE;
                uint32_t            _nPollTicks;
                uint32_t            _nSrvTicks;
-        static PANGO_PACKET_MAP    _outbound;
+        static H4AMC_PACKET_MAP    _outbound;
+               std::string         _password;
                std::string         _username;
                std::string         _willPayload;
                uint8_t             _willQos;
                bool                _willRetain;
                std::string         _willTopic;
                
-               void                _ACK(PANGO_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
+               void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
                void                _ACKoutbound(uint16_t id){ _ACK(&_outbound,id,false); }
 
                void                _cleanStart();
-               void                _clearQQ(PANGO_PACKET_MAP* m);
+               void                _clearQQ(H4AMC_PACKET_MAP* m);
+               void                _cnxGuard(H4_FN_VOID f);
                void                _destroyClient();
                void                _handlePacket(uint8_t* data, size_t len);
                void                _handlePublish(mqttTraits T);
@@ -119,15 +119,16 @@ class PangolinMQTT: public AardvarkTCP {
                void                _resendPartialTxns();
     public:
         PangolinMQTT();
-                void               connect(std::string clientId="",bool session=true);
+                void               connectMqtt(std::string clientId="",bool session=true);
                 void               disconnect();
+        static  std::string        errorstring(int e);
                 std::string        getClientId(){ return _clientId; }
-                size_t inline      getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - PANGO_HEAP_SAFETY) /2 ; }
+                size_t inline      getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - H4AMC_HEAP_SAFETY) /2 ; }
                 bool               mqttConnected(){ return _connected; }
-                void               onMqttConnect(PANGO_cbConnect callback){ _cbConnect=callback; }
-                void               onMqttDisconnect(PANGO_cbDisconnect callback){ _cbDisconnect=callback; }
-                void               onMqttError(PANGO_cbError callback){ _cbError=callback; }
-                void               onMqttMessage(PANGO_cbMessage callback){ _cbMessage=callback; }
+                void               onMqttConnect(H4AMC_cbConnect callback){ _cbConnect=callback; }
+                void               onMqttDisconnect(H4AMC_cbDisconnect callback){ _cbDisconnect=callback; }
+                void               onMqttError(H4AMC_cbError callback){ _cbError=callback; }
+                void               onMqttMessage(H4AMC_cbMessage callback){ _cbMessage=callback; }
                 void               publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0,  bool retain=false);
                 void               publish(const char* topic,const char* payload, size_t length, uint8_t qos=0,  bool retain=false);
                 template<typename T>
@@ -171,9 +172,9 @@ class PangolinMQTT: public AardvarkTCP {
                 template<typename T>
                 void xPayload(const uint8_t* payload,size_t len,T& value) {
                     if(len==sizeof(T)) memcpy(reinterpret_cast<T*>(&value),payload,sizeof(T));
-                    else _notify(X_INVALID_LENGTH,len);
+                    else _notify(H4AMC_X_INVALID_LENGTH,len);
                 }
-                void               setKeepAlive(uint16_t keepAlive){ _keepalive = PANGO_POLL_RATE * keepAlive; }
+                void               setKeepAlive(uint16_t keepAlive){ _keepalive = H4AMC_POLL_RATE * keepAlive; }
                 void               setServer(const char* url,const char* username="", const char* password = "",const uint8_t* fingerprint=nullptr);
                 void               setWill(const std::string& topic, uint8_t qos, bool retain, const std::string& payload = nullptr);
                 void               subscribe(const char* topic, uint8_t qos=0);
@@ -184,9 +185,9 @@ class PangolinMQTT: public AardvarkTCP {
 //              DO NOT CALL ANY FUNCTION STARTING WITH UNDERSCORE!!! _
 //
                 void               _notify(uint8_t e,int info=0);
-#if PANGO_DEBUG
+#if H4AMC_DEBUG
                 void               dump(); // null if no debug
 #endif
 };
 
-extern PangolinMQTT*        PANGOV3;
+extern PangolinMQTT*        H4AMCV3;
