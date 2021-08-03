@@ -24,8 +24,8 @@ SOFTWARE.
 */
 #pragma once
 
-#include"pango_config.h"
-#include"pango_common.h"
+#include"h4amc_config.h"
+#include"h4amc_common.h"
 
 #include<Arduino.h>
 
@@ -41,11 +41,10 @@ SOFTWARE.
 #endif
 
 #include<H4AsyncTCP.h>
+#include<H4AsyncTCP.h>
 
 enum H4AMC_FAILURE {
-    H4AMC_DISCONNECTED = H4AMC_ERROR_BASE,
-    H4AMC_SERVER_UNAVAILABLE,
-    H4AMC_CONNECT_FAIL,
+    H4AMC_CONNECT_FAIL= H4AMC_ERROR_BASE,
     H4AMC_BAD_FINGERPRINT,
     H4AMC_NO_FINGERPRINT,
     H4AMC_NO_SSL,
@@ -57,7 +56,8 @@ enum H4AMC_FAILURE {
     H4AMC_OUTBOUND_PUB_TOO_BIG,
     H4AMC_BOGUS_PACKET,
     H4AMC_X_INVALID_LENGTH,
-    H4AMC_NOT_ENOUGH_MEMORY,
+    H4AMC_USER_LOGIC_ERROR,
+    H4AMC_KEEPALIVE_TOO_LONG,
     H4AMC_ERROR_MAX
 };
 
@@ -69,7 +69,6 @@ using H4AMC_FN_U8PTRU8     = std::function<uint8_t*(uint8_t*)>;
 
 using H4AMC_PACKET_MAP      =std::map<uint16_t,mqttTraits>; // indexed by messageId
 using H4AMC_cbConnect       =std::function<void(bool)>;
-using H4AMC_cbDisconnect    =std::function<void(int8_t)>;
 using H4AMC_cbError         =std::function<void(int, int)>;
 using H4AMC_cbMessage       =std::function<void(const char* topic, const uint8_t* payload, size_t len,uint8_t qos,bool retain,bool dup)>;
 
@@ -77,60 +76,61 @@ class Packet;
 class ConnectPacket;
 class PublishPacket;
 
-class PangolinMQTT: public H4AsyncTCP {
+enum {
+    H4AMC_DISCONNECTED,
+    H4AMC_RUNNING,
+    H4AMC_FATAL
+};
+
+class H4AsyncMQTT: public H4AsyncClient {
         friend class Packet;
         friend class ConnectPacket;
         friend class PublishPacket;
         friend class mqttTraits;
+                uint32_t            _state=H4AMC_DISCONNECTED;
+                H4AMC_cbConnect     _cbMQTTConnect=nullptr;
+                H4_FN_VOID          _cbMQTTDisconnect=nullptr;
+                H4AMC_cbError       _cbMQTTError=nullptr;
 
-               H4AMC_cbConnect     _cbConnect=nullptr;
-               H4AMC_cbDisconnect  _cbDisconnect=nullptr;
-               H4AMC_cbError       _cbError=nullptr;
-               H4AMC_cbMessage     _cbMessage=nullptr;
-               bool                _cleanSession=true;
-               std::string         _clientId;
-               bool                _connected=false;
-        static H4_INT_MAP          _errorNames;
-        static H4AMC_PACKET_MAP    _inbound;
-               uint16_t            _keepalive=15 * H4AMC_POLL_RATE;
-               uint32_t            _nPollTicks;
-               uint32_t            _nSrvTicks;
-        static H4AMC_PACKET_MAP    _outbound;
-               std::string         _password;
-               std::string         _username;
-               std::string         _willPayload;
-               uint8_t             _willQos;
-               bool                _willRetain;
-               std::string         _willTopic;
+                H4AMC_cbMessage     _cbMessage=nullptr;
+                bool                _cleanSession=true;
+                std::string         _clientId;
+        static  H4_INT_MAP          _errorNames;
+        static  H4AMC_PACKET_MAP    _inbound;
+                uint32_t            _keepalive=H4AMC_KEEPALIVE;
+        static  H4AMC_PACKET_MAP    _outbound;
+                std::string         _password;
+                std::string         _username;
+                std::string         _willPayload;
+                uint8_t             _willQos;
+                bool                _willRetain;
+                std::string         _willTopic;
                
-               void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
-               void                _ACKoutbound(uint16_t id){ _ACK(&_outbound,id,false); }
+                void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
+                void                _ACKoutbound(uint16_t id){ _ACK(&_outbound,id,false); }
 
-               void                _cleanStart();
-               void                _clearQQ(H4AMC_PACKET_MAP* m);
-               void                _cnxGuard(H4_FN_VOID f);
-               void                _destroyClient();
-               void                _handlePacket(uint8_t* data, size_t len);
-               void                _handlePublish(mqttTraits T);
-        inline void                _hpDespatch(mqttTraits T);
-        inline void                _hpDespatch(uint16_t id);
-               void                _onDisconnect(int8_t r);
-               void                _onPoll();
-               void                _resendPartialTxns();
+                void                _cleanStart();
+                void                _clearQQ(H4AMC_PACKET_MAP* m);
+                void                _destroyClient();
+                void                _handlePacket(uint8_t* data, size_t len);
+                void                _handlePublish(mqttTraits T);
+        inline  void                _hpDespatch(mqttTraits T);
+        inline  void                _hpDespatch(uint16_t id);
+                void                _resendPartialTxns();
+        inline  void                _runGuard(H4_FN_VOID f);
     public:
-        PangolinMQTT();
-                void               connectMqtt(std::string clientId="",bool session=true);
-                void               disconnect();
-        static  std::string        errorstring(int e);
-                std::string        getClientId(){ return _clientId; }
-                size_t inline      getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - H4AMC_HEAP_SAFETY) /2 ; }
-                bool               mqttConnected(){ return _connected; }
-                void               onMqttConnect(H4AMC_cbConnect callback){ _cbConnect=callback; }
-                void               onMqttDisconnect(H4AMC_cbDisconnect callback){ _cbDisconnect=callback; }
-                void               onMqttError(H4AMC_cbError callback){ _cbError=callback; }
-                void               onMqttMessage(H4AMC_cbMessage callback){ _cbMessage=callback; }
-                void               publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0,  bool retain=false);
-                void               publish(const char* topic,const char* payload, size_t length, uint8_t qos=0,  bool retain=false);
+        H4AsyncMQTT();
+                void                connectMqtt(std::string clientId="",bool session=true);
+                void                disconnect();
+        static  std::string         errorstring(int e);
+                std::string         getClientId(){ return _clientId; }
+                size_t inline       getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - H4AMC_HEAP_SAFETY) /2 ; }
+                void                onMqttConnect(H4AMC_cbConnect callback){ _cbMQTTConnect=callback; }
+                void                onMqttDisconnect(H4_FN_VOID callback){ _cbMQTTDisconnect=callback; }
+                void                onMqttError(H4AMC_cbError callback){ _cbMQTTError=callback; }
+                void                onMqttMessage(H4AMC_cbMessage callback){ _cbMessage=callback; }
+                void                publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0,  bool retain=false);
+                void                publish(const char* topic,const char* payload, size_t length, uint8_t qos=0,  bool retain=false);
                 template<typename T>
                 void publish(const char* topic,T v,const char* fmt="%d",uint8_t qos=0,bool retain=false){
                     char buf[16];
@@ -174,7 +174,7 @@ class PangolinMQTT: public H4AsyncTCP {
                     if(len==sizeof(T)) memcpy(reinterpret_cast<T*>(&value),payload,sizeof(T));
                     else _notify(H4AMC_X_INVALID_LENGTH,len);
                 }
-                void               setKeepAlive(uint16_t keepAlive){ _keepalive = H4AMC_POLL_RATE * keepAlive; }
+                void               setKeepAlive(uint16_t keepAlive);
                 void               setServer(const char* url,const char* username="", const char* password = "",const uint8_t* fingerprint=nullptr);
                 void               setWill(const std::string& topic, uint8_t qos, bool retain, const std::string& payload = nullptr);
                 void               subscribe(const char* topic, uint8_t qos=0);
@@ -184,10 +184,10 @@ class PangolinMQTT: public H4AsyncTCP {
 //
 //              DO NOT CALL ANY FUNCTION STARTING WITH UNDERSCORE!!! _
 //
-                void               _notify(uint8_t e,int info=0);
+                void               _notify(int e,int info=0);
 #if H4AMC_DEBUG
                 void               dump(); // null if no debug
 #endif
 };
 
-extern PangolinMQTT*        H4AMCV3;
+extern H4AsyncMQTT*        H4AMCV3;

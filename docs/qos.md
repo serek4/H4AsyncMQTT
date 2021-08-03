@@ -55,7 +55,7 @@ Being physically unable to comply due to both 1.2.1 and 1.2.2 above, the embedde
 
 It can "lie" to the server and ACK the incoming IDs regardless of whether they were delivered or not: "Confirm delivery of ID 666? Of *of course* I delivered it!...`server.sendACK(666);`"
 
-The success of this method depends on which of the two recommeded algorithms A or B is used (see "Figure 4.3 – QoS 2 protocol flow diagram, non normative example" in the [MQTT 3.1.1 spec](http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html) ), Using method B allows the lie to go unnoticed *and* actually satisifes QoS2 rules *if* you actually managed to deliver the message before the loss of connection. `PangolinMQTT` takes this approach.
+The success of this method depends on which of the two recommeded algorithms A or B is used (see "Figure 4.3 – QoS 2 protocol flow diagram, non normative example" in the [MQTT 3.1.1 spec](http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html) ), Using method B allows the lie to go unnoticed *and* actually satisifes QoS2 rules *if* you actually managed to deliver the message before the loss of connection. `H4AsyncMQTT` takes this approach.
 
 Method A, well... didn't you mother tell you "lying never pays"? The server will *think* it has successfully delivered the QoS2 "exactly once" but as when ordering cheap things from various far-flung nations, the client is left forever shouting "Oi! Where's my packet???" - and he will *never* receive it, thus breaking the QoS2 promise.
 
@@ -123,13 +123,13 @@ Allow the user to decide the maximum safe size for his implementation (while pro
 
 Inherent in this approach is that *any* library adopting it must also gracefully reject any message larger than than the user-defined maximum and then notify him clearly of the fact, without crashing.
 
-This is the method currently used by `PangolinMQTT`. Additionally, it provides an `onError` callback to notify the user of "Killer Packets" that would otherwise break the memory limits, and safely discards any oversized incoming data.
+This is the method currently used by `H4AsyncMQTT`. Additionally, it provides an `onError` callback to notify the user of "Killer Packets" that would otherwise break the memory limits, and safely discards any oversized incoming data.
 
 ---
 
 ## Find me daily in these FB groups
 
-* [Pangolin Support](https://www.facebook.com/groups/pangolinmqtt/)
+* [Pangolin Support](https://www.facebook.com/groups/H4AsyncMQTT/)
 * [ESP8266 & ESP32 Microcontrollers](https://www.facebook.com/groups/2125820374390340/)
 * [ESP Developers](https://www.facebook.com/groups/ESP8266/)
 * [H4/Plugins support](https://www.facebook.com/groups/h4plugins)

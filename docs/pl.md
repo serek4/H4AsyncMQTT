@@ -11,7 +11,7 @@ An MQTT payload consists of an arbitrary block of data and its length.
 
 The ***ONLY*** correct data type for the data on ESP8266 / ESP32 is `uint8_t` (or `byte`) and thus the correct type for a pointer to that data is  `uint8_t*`.
 
-Given that PangolinMQTT allows for much bigger payloads than most other libraries (up to 0.5* the amount of the free heap) its defintion is `size_t`.
+Given that H4AsyncMQTT allows for much bigger payloads than most other libraries (up to 0.5* the amount of the free heap) its defintion is `size_t`.
 
 ---
 
@@ -49,7 +49,7 @@ For differing payloads, the length calculation ***must*** be correctly performed
 
 ## Publishing numeric "strings"
 
-PangolinMQTT Provides a version of the `publish` API which operates on common arithmetic types e.g. `int` `unsigned` `float` etc. It will automatically convert the data to a string according to `printf`-style qualifiers and send it with the appropriate length
+H4AsyncMQTT Provides a version of the `publish` API which operates on common arithmetic types e.g. `int` `unsigned` `float` etc. It will automatically convert the data to a string according to `printf`-style qualifiers and send it with the appropriate length
 
 ```cpp
 int myvalue=123456;
@@ -182,7 +182,7 @@ Where [ VALUE ] can be pretty much any data type, e.g.
 * bool
 * ... etc etc
 
-PangolinMQTT will automatically calculate the length from whatever data type is given for the value;
+H4AsyncMQTT will automatically calculate the length from whatever data type is given for the value;
 
 ### Example
 
@@ -217,7 +217,7 @@ Where [ VALUE REFERENCE ] is the name of the variable to hold the unpacked value
 * bool
 * ... etc etc
 
-PangolinMQTT will automatically calculate the length from whatever data type is given for the variable to hold the value;
+H4AsyncMQTT will automatically calculate the length from whatever data type is given for the variable to hold the value;
 
 ### Examples
 
@@ -237,7 +237,7 @@ mqttClient.xPayload(&payload[0],payload_length,ss); // unpacks <payload_length> 
 
 ## Find me daily in these FB groups
 
-* [Pangolin Support](https://www.facebook.com/groups/pangolinmqtt/)
+* [Pangolin Support](https://www.facebook.com/groups/H4AsyncMQTT/)
 * [ESP8266 & ESP32 Microcontrollers](https://www.facebook.com/groups/2125820374390340/)
 * [ESP Developers](https://www.facebook.com/groups/ESP8266/)
 * [H4/Plugins support](https://www.facebook.com/groups/h4plugins)

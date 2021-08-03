@@ -8,12 +8,12 @@
 
 ---
 
-###### Version 3.0.2 [Release Notes](docs/rn300.md)
+###### Version 0.0.1 [Release Notes](docs/rn300.md)
 
 * [Features](#features)
 * [Performance](#performance)
 * [Unique features](#features-you-may-not-find-in-other-libraries)
-* [PangolinMQTT's place in "The Menagerie"](#the-menagerie-roadmap)
+* [H4AsyncMQTT's place in "The Menagerie"](#the-menagerie-roadmap)
 * [Installation](#installation)
 * [Issues](#issues)
 
@@ -57,11 +57,11 @@
 
 ## Large Payloads
 
-PangolinMQTT automatically fragments outbound packets and reassembles inbound packets of any size up to about 1/2 the free heap. User code simply gets a copy of the full packet - irrespective of its size - without any fuss and requiring *zero* code on the user's part.
+H4AsyncMQTT automatically fragments outbound packets and reassembles inbound packets of any size up to about 1/2 the free heap. User code simply gets a copy of the full packet - irrespective of its size - without any fuss and requiring *zero* code on the user's part.
 
 ## Full QoS1 / QoS2 compatibility / recovery
 
-PangolinMQTT's author is unaware of any similar libraries for ESP8266/ESP32 that *fully* and *correctly* implement QoS1/2 *in all circumstances*.
+H4AsyncMQTT's author is unaware of any similar libraries for ESP8266/ESP32 that *fully* and *correctly* implement QoS1/2 *in all circumstances*.
 
 They *may* sometimes work, e.g. with only small packets and/or slow send rates but fail when either increases. None will correctly recover "lost" messages on unexpected disconnect. Given that this is pretty much the *only* purpose of QoS1/2 then any library *not* fulfilling this promise *cannot* legitimately claim to be QoS1/2 compatible. If a library does not do this:
 
@@ -74,7 +74,7 @@ Then it ***does not support QoS1/2*** no matter what claims it may make.
 
 # The "menagerie" roadmap
 
-PangolinMQTT is one of a family of firmware packages for simple *robust* and rapid ***asynchronous*** IOT development on ESP8266 / ESP32
+H4AsyncMQTT is one of a family of firmware packages for simple *robust* and rapid ***asynchronous*** IOT development on ESP8266 / ESP32
 
 SEE [Installation](#installation)
 
@@ -88,13 +88,13 @@ SEE [Installation](#installation)
 ||[Forked ESPAsyncTCP](https://github.com/philbowles/ESPAsyncTCP-master)|"Glue" to LwIP(ESP32)| Missing features added |
 ||[Forked ESPAsyncWebserver](https://github.com/philbowles/ESPAsyncWebServer)| Basis of webUI in H4Plugins| Several major bugfixes |
 |![roadmap](assets/common/tools_icon.jpg)|[PMB Tools](https://github.com/philbowles/pmbtools)|'32/'8266 HAL and utility functions| |
-|![roadmap](assets/common/H4Async_icon.jpg)|[H4AsyncTCP](https://github.com/philbowles/H4AsyncTCP)|Simple Large-payload Async TCP| API-compatible with ESPAsyncTCP, seamless TLS/SSL |
-|![roadmap](assets/common/pangolin_icon.jpg)|[PangolinMQTT](https://github.com/philbowles/PangolinMQTT)|Async MQTT Client|QoS 0/1/2 Fully 3.1.1 compliant. Large payloads |
+|![roadmap](assets/common/H4Async_icon.jpg)|[H4AsyncClient](https://github.com/philbowles/H4AsyncClient)|Simple Large-payload Async TCP| API-compatible with ESPAsyncTCP, seamless TLS/SSL |
+|![roadmap](assets/common/pangolin_icon.jpg)|[H4AsyncMQTT](https://github.com/philbowles/H4AsyncMQTT)|Async MQTT Client|QoS 0/1/2 Fully 3.1.1 compliant. Large payloads |
 |![roadmap](assets/common/armadillo_icon.jpg)|[ArmadilloHTTP](https://github.com/philbowles/ArmadilloHTTP)|Async HTTP/S Client| Simple send/callback of large payloads |
 |![roadmap](assets/common/h4_icon.jpg)|[H4](https://github.com/philbowles/H4)|Scheduler/Async Timers| |
 |![roadmap](assets/common/h4p_icon.jpg)|[H4/Plugins](https://github.com/philbowles/h4plugins)|Full Async IOT Firmware| Webserver, MQTT, OTA, NTP, HTTP etc etc |
 
-## PangolinMQTT installation path
+## H4AsyncMQTT installation path
 
 ![pango path](assets/roadmapPangolin.jpg)
 

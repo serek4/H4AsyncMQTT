@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-#include<PangolinMQTT.h>
+#include<H4AsyncMQTT.h>
 #include<Packet.h>
 
 uint16_t                            Packet::_nextId=1000;
@@ -67,7 +67,7 @@ void Packet::_build(bool hold){
             H4AMCV3->txdata(virgin,_bs,false);
         }
     }  
-    else H4AMCV3->_notify(H4AMC_NOT_ENOUGH_MEMORY,_bs);
+    else H4AMCV3->_notify(ERR_MEM,_bs);
 }
 
 void Packet::_idGarbage(uint16_t id){
@@ -160,8 +160,8 @@ PublishPacket::PublishPacket(const char* topic, uint8_t qos, bool retain, const 
                 uint8_t* p2=_qos ? _poke16(p,_id):p;
                 memcpy(p2,payload,_length);
                 mqttTraits T(base,_bs);
-                if(_givenId) PangolinMQTT::_inbound[_id]=T;
-                else if(_qos) PangolinMQTT::_outbound[_id]=T;
+                if(_givenId) H4AsyncMQTT::_inbound[_id]=T;
+                else if(_qos) H4AsyncMQTT::_outbound[_id]=T;
             };
             _build(_givenId);
         } else H4AMCV3->_notify(_givenId ? H4AMC_INBOUND_PUB_TOO_BIG:H4AMC_OUTBOUND_PUB_TOO_BIG,length);

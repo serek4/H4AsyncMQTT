@@ -23,13 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 #pragma once
-#include <PangolinMQTT.h>
+#include <H4AsyncMQTT.h>
 #include <mqTraits.h>
 
 using H4AMC_BLOCK_Q        = std::queue<mbx>;
 
 class Packet {
-    friend class PangolinMQTT;
+    friend class H4AsyncMQTT;
     protected:
         static  uint16_t         _nextId;
                 uint16_t         _id=0; 

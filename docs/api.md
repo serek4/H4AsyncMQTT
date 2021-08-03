@@ -127,7 +127,7 @@ void xPayload(const uint8_t* payload,size_t len,T& value);
 
 # Advanced Topics
 
-PangolinMQTT comes with some built-in diagnostics. These can be controlled by setting the debug level in `config.h`
+H4AsyncMQTT comes with some built-in diagnostics. These can be controlled by setting the debug level in `config.h`
 
 ```cpp
 /*
@@ -157,7 +157,7 @@ Will only be compiled if user sets H4AMC_DEBUG to 3 or above
 
 ## Find me daily in these FB groups
 
-* [Pangolin Support](https://www.facebook.com/groups/pangolinmqtt/)
+* [Pangolin Support](https://www.facebook.com/groups/H4AsyncMQTT/)
 * [ESP8266 & ESP32 Microcontrollers](https://www.facebook.com/groups/2125820374390340/)
 * [ESP Developers](https://www.facebook.com/groups/ESP8266/)
 * [H4/Plugins support](https://www.facebook.com/groups/h4plugins)

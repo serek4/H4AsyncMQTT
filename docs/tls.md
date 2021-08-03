@@ -14,7 +14,7 @@ You must replace that library with this [bugfixed version](https://github.com/ph
 SSL Features are NOT available by default. This is because they add about 64k to the binary, *even if you don't use them*! 
 
 In order to use TLS, you first need to enable SSL in both the [bugfixed library](https://github.com/philbowles/ESPAsyncTCP): Edit `async_config.h` 
-and PangolinMQTT itself: Edit `config.h`
+and H4AsyncMQTT itself: Edit `config.h`
 
 In both files, find the line which says:
 `#define ASYNC_TCP_SSL_ENABLED 0`
@@ -42,7 +42,7 @@ const uint8_t cert[20] = { 0x9a, 0xf1, 0x39, 0x79,0x95,0x26,0x78,0x61,0xad,0x1d,
 
 ## Find me daily in these FB groups
 
-* [Pangolin Support](https://www.facebook.com/groups/pangolinmqtt/)
+* [Pangolin Support](https://www.facebook.com/groups/H4AsyncMQTT/)
 * [ESP8266 & ESP32 Microcontrollers](https://www.facebook.com/groups/2125820374390340/)
 * [ESP Developers](https://www.facebook.com/groups/ESP8266/)
 * [H4/Plugins support](https://www.facebook.com/groups/h4plugins)

@@ -22,27 +22,41 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-#define H4AMC_VERSION "3.0.2"
-#define H4AMC_ERROR_BASE 100
-/*
-    Debug levels: 
-    0 - No debug messages
-    1 - connection / disconnection + paacket names TX/RX messages
-    2 - level 1 + MQTT packet types
-    3 - level 2 + MQTT packet info (excluding payload)
-    4 - everything including full payload hex dump (and deep diagnostics!)
-*/
+#pragma once
+#include<Arduino.h>
 
-#define H4AMC_DEBUG 2
+extern void dumphex(const uint8_t*,size_t);
 
-//#define ASYNC_TCP_SSL_ENABLED 0
-// Don't forget to edit also async_config.h in the PATCHED ESPAsyncTCP lib folder!!!
+#if H4AMC_DEBUG
+    template<int I, typename... Args>
+    void H4AMC_PRINT(const char* fmt, Args... args) {
+        if (H4AMC_DEBUG >= I) Serial.printf(std::string(std::string("H4AMC:%d: ")+fmt).c_str(),I,args...);
+    }
+    #define H4AMC_PRINT1(...) H4AMC_PRINT<1>(__VA_ARGS__)
+    #define H4AMC_PRINT2(...) H4AMC_PRINT<2>(__VA_ARGS__)
+    #define H4AMC_PRINT3(...) H4AMC_PRINT<3>(__VA_ARGS__)
+    #define H4AMC_PRINT4(...) H4AMC_PRINT<4>(__VA_ARGS__)
 
-#define H4AMC_POLL_RATE      2
-// per second - depend on LwIP implementation, may need to change as keepalive is scaled from this value
-// e.g 15 seconds = 30 poll "ticks"
+    template<int I>
+    void h4amcdump(const uint8_t* p, size_t len) { if (H4AMC_DEBUG >= I) dumphex(p,len); }
+    #define H4AMC_DUMP3(p,l) h4amcdump<3>((p),l)
+    #define H4AMC_DUMP4(p,l) h4amcdump<4>((p),l)
+#else
+    #define H4AMC_PRINT1(...)
+    #define H4AMC_PRINT2(...)
+    #define H4AMC_PRINT3(...)
+    #define H4AMC_PRINT4(...)
 
-#define H4AMC_MAX_RETRIES    2
+    #define H4AMC_DUMP3(...)
+    #define H4AMC_DUMP4(...)
+#endif
 
-#define H4AMC_HEAP_SAFETY 4096
-// we will try to never let the heap fall below this value
+enum H4AMC_MQTT_CNX_FLAG : uint8_t {
+    USERNAME      = 0x80,
+    PASSWORD      = 0x40,
+    WILL_RETAIN   = 0x20,
+    WILL_QOS1     = 0x08,
+    WILL_QOS2     = 0x10,
+    WILL          = 0x04,
+    CLEAN_SESSION = 0x02
+};

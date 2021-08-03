@@ -22,20 +22,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-#include <PangolinMQTT.h>
+#include <H4AsyncMQTT.h>
 #include <h4async_config.h>
 #include "Packet.h"
 #include "mqTraits.h"
 
-H4AMC_PACKET_MAP        PangolinMQTT::_inbound;
-H4AMC_PACKET_MAP        PangolinMQTT::_outbound;
+H4AMC_PACKET_MAP        H4AsyncMQTT::_inbound;
+H4AMC_PACKET_MAP        H4AsyncMQTT::_outbound;
 
-PangolinMQTT*           H4AMCV3;
+H4AsyncMQTT*           H4AMCV3;
 
-H4_INT_MAP PangolinMQTT::_errorNames={
+H4_INT_MAP H4AsyncMQTT::_errorNames={
 #if H4AMC_DEBUG
-    {H4AMC_DISCONNECTED,"NOT CONNECTED"},
-    {H4AMC_SERVER_UNAVAILABLE," MQTT SERVER UNAVAILABLE"},
     {H4AMC_CONNECT_FAIL,"CONNECT FAIL"},
     {H4AMC_BAD_FINGERPRINT,"H4AMC_BAD_FINGERPRINT"},
     {H4AMC_NO_FINGERPRINT,""},
@@ -48,40 +46,68 @@ H4_INT_MAP PangolinMQTT::_errorNames={
     {H4AMC_OUTBOUND_PUB_TOO_BIG,"H4AMC_OUTBOUND_PUB_TOO_BIG"},
     {H4AMC_BOGUS_PACKET,"H4AMC_BOGUS_PACKET"},
     {H4AMC_X_INVALID_LENGTH,"H4AMC_X_INVALID_LENGTH"},
+    {H4AMC_KEEPALIVE_TOO_LONG,"KEEPALIVE TOO LONG: MUST BE < H4AS_SCAVENGE_FREQ"},
+    {H4AMC_USER_LOGIC_ERROR,"USER LOGIC ERROR"},
 #endif
 };
 
-PangolinMQTT::PangolinMQTT(): H4AsyncTCP(){
+H4AsyncMQTT::H4AsyncMQTT(): H4AsyncClient(){
+    static uint8_t PING[]={PINGREQ,0};
     H4AMCV3=this;
     onConnect([=](){
-        setNoDelay(true);
-        if(!_connected) ConnectPacket cp{};
+        H4AMC_PRINT1("on TCP Connect\n");
+        //setNoDelay(true);
+        h4.cancelSingleton(H4AMC_RCX_ID);
+        h4.every(_keepalive,[=]{
+            if(!connected()){ 
+                Serial.printf("Server gone away - keep client alive!\n");
+                _lastSeen=millis();
+            } else txdata(PING,2,false); 
+        },nullptr,H4AMC_KA_ID,true); // keepalive even if remote server gone away
+        ConnectPacket cp{};
     });
-    onDisconnect([=](int r){ H4AMC_PRINT1("TCP CHOPPED US! %d\n",r); _onDisconnect(H4AMC_DISCONNECTED); });
-    onError([=](int error,int info){
-        H4AMC_PRINT1("onError %d info=%d\n",error,info); 
-        _notify(error,info);
-        if(error < H4AMC_ERROR_BASE) disconnect();
-    });
-    onPoll([=]{ _onPoll(); });
 
-    rx([=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); });
+    onDisconnect([=]{ 
+        _state=H4AMC_DISCONNECTED;
+        if(_cbMQTTDisconnect) _cbMQTTDisconnect();
+        Serial.printf("Disconnected - start reconnector\n");
+        h4.every(10000,[=]{ Serial.printf("Attempt reconnection\n"); connect(); },[]{ Serial.printf("RCX stopped\n"); },H4AMC_RCX_ID,true);
+    });
+
+    onError([=](int error,int info){
+        H4AMC_PRINT1("onError %d info=%d\n",error,info);
+        _notify(error,info);
+//        if(error == ERR_RST) _cbDisconnect();
+        if(error > ERR_ABRT) {
+            Serial.printf("UNRECOVERABLE cancel reconnector! %d\n",error);
+            h4.cancelSingleton(H4AMC_RCX_ID);
+            _state=H4AMC_FATAL;
+        } 
+        else {
+            Serial.printf("Allow error! %d\n",error);
+            // _cbDisconnect();
+            //h4.queueFunction([=]{ Serial.printf("QF _raw_close %d\n",error); _raw_close(this); });
+            _raw_close(this);
+        }
+    });
+
+    _rxfn=[=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); };
 }
 
-void PangolinMQTT::setServer(const char* url,const char* username, const char* password,const uint8_t* fingerprint){
+void H4AsyncMQTT::setServer(const char* url,const char* username, const char* password,const uint8_t* fingerprint){
     _username = username;
     _password = password;
     TCPurl(url,fingerprint);
 }
 
-void PangolinMQTT::setWill(const std::string& topic, uint8_t qos, bool retain, const std::string& payload) {
+void H4AsyncMQTT::setWill(const std::string& topic, uint8_t qos, bool retain, const std::string& payload) {
     _willTopic = topic;
     _willQos = qos;
     _willRetain = retain;
     _willPayload = payload;
 }
 
-void PangolinMQTT::_ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout){ /// refakta?
+void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout){ /// refakta?
     if(m->count(id)){
         uint8_t* data=((*m)[id]).data;
         mbx::clear(data);
@@ -89,7 +115,7 @@ void PangolinMQTT::_ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout){ /// refakta
     } else _notify(inout ? H4AMC_INBOUND_QOS_ACK_FAIL:H4AMC_OUTBOUND_QOS_ACK_FAIL,id); //H4AMC_PRINT("WHO TF IS %d???\n",id);
 }
 
-void PangolinMQTT::_cleanStart(){
+void H4AsyncMQTT::_cleanStart(){
     H4AMC_PRINT4("_cleanStart clrQQ inbound\n");
     _clearQQ(&_inbound);
     H4AMC_PRINT4("_cleanStart clrQQ outbound\n");
@@ -97,16 +123,12 @@ void PangolinMQTT::_cleanStart(){
     Packet::_nextId=1000; // SO much easier to differentiate client vs server IDs in Wireshark log :)
 }
 
-void PangolinMQTT::_clearQQ(H4AMC_PACKET_MAP* m){
+void H4AsyncMQTT::_clearQQ(H4AMC_PACKET_MAP* m){
     for(auto &i:*m) mbx::clear(i.second.data);
     m->clear();
 }
-void PangolinMQTT::_cnxGuard(H4_FN_VOID f){
-    if(_connected) f();
-    else _notify(H4AMC_DISCONNECTED);
-}
 
-void PangolinMQTT::_hpDespatch(mqttTraits P){ 
+void H4AsyncMQTT::_hpDespatch(mqttTraits P){ 
     if(_cbMessage) {
 #if H4AMC_DEBUG
         if(P.topic=="pango"){
@@ -120,28 +142,22 @@ void PangolinMQTT::_hpDespatch(mqttTraits P){
                 Serial.printf("CHECK FP: %d\n",H4AT_CHECK_FINGERPRINT);
 //                Serial.printf("SAFEHEAP: %d\n",H4AT_HEAP_SAFETY);
                 Serial.printf("H4AMC Vn: %s\n",H4AMC_VERSION);
-                Serial.printf("POLLRATE: %d\n",H4AMC_POLL_RATE);
                 Serial.printf("NRETRIES: %d\n",H4AMC_MAX_RETRIES);
-
                 Serial.printf("session : %s\n",_cleanSession ? "clean":"dirty");
                 Serial.printf("clientID: %s\n",_clientId.data());
-                Serial.printf("keepaliv: %d => %ds\n",_keepalive,_keepalive/H4AMC_POLL_RATE);
-                Serial.printf("poll Tix: %d\n",_nPollTicks);
-                Serial.printf("srv  Tix: %d\n",_nSrvTicks);
+                Serial.printf("keepaliv: %d\n",_keepalive);
             }
             else if(pl=="dump"){ dump(); }
         }
-
         else
 #endif
         _cbMessage(P.topic.data(), P.payload, P.plen, P.qos, P.retain, P.dup);
     }
 }
 
-void PangolinMQTT::_hpDespatch(uint16_t id){ _hpDespatch(_inbound[id]); }
+void H4AsyncMQTT::_hpDespatch(uint16_t id){ _hpDespatch(_inbound[id]); }
 
-void PangolinMQTT::_handlePacket(uint8_t* data, size_t len){
-    _nSrvTicks=0;
+void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
     if(data[0]==PINGRESP || data[0]==UNSUBACK){
         H4AMC_PRINT1("T=%d %s\n",millis(),mqttTraits::pktnames[data[0]]);
         return; // early bath
@@ -155,15 +171,14 @@ void PangolinMQTT::_handlePacket(uint8_t* data, size_t len){
         case CONNACK:
             if(i[1]) _notify(H4AMC_CONNECT_FAIL,i[1]);
             else {
-                _connected=true;
+                _state=H4AMC_RUNNING;
                 bool session=i[0] & 0x01;
                 _resendPartialTxns();
-                _nPollTicks=_nSrvTicks=0;
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
 #if H4AMC_DEBUG
                 SubscribePacket pango("pango",0); // internal info during beta...will be moved back inside debug #ifdef
 #endif
-                if(_cbConnect) _cbConnect(session);
+                if(_cbMQTTConnect) _cbMQTTConnect(session);
             }
             break;
         case SUBACK:
@@ -198,7 +213,7 @@ void PangolinMQTT::_handlePacket(uint8_t* data, size_t len){
     }
 }
 
-void PangolinMQTT::_handlePublish(mqttTraits P){
+void H4AsyncMQTT::_handlePublish(mqttTraits P){
     uint8_t qos=P.qos;
     uint16_t id=P.id;
     H4AMC_PRINT4("_handlePublish %s id=%d @ QoS%d R=%s DUP=%d PL@%08X PLEN=%d\n",P.topic.data(),id,qos,P.retain ? "true":"false",P.dup,P.payload,P.plen);
@@ -222,34 +237,12 @@ void PangolinMQTT::_handlePublish(mqttTraits P){
     }
 }
 
-void PangolinMQTT::_notify(uint8_t e,int info){ 
+void H4AsyncMQTT::_notify(int e,int info){ 
     H4AMC_PRINT1("NOTIFY e=%d inf=%d\n",e,info);
-    if(_cbError) _cbError(e,info);
+    if(_cbMQTTError) _cbMQTTError(e,info);
 }
 
-void PangolinMQTT::_onDisconnect(int8_t r) {
-    _connected=false;
-    if(_cbDisconnect) _cbDisconnect(r);
-}
-
-void PangolinMQTT::_onPoll() {
-    static uint8_t  G[]={PINGREQ,0};
-    if(_connected){
-        ++_nPollTicks;
-        ++_nSrvTicks;
-
-        if(_nSrvTicks > ((_keepalive * 3) / 2)) _onDisconnect(H4AMC_SERVER_UNAVAILABLE);
-        else {
-            if(_nPollTicks > _keepalive){
-                H4AMC_PRINT1("T=%d PINGREQ\n",millis());
-                txdata(G,2,false); // static ping
-                _nPollTicks=0;
-            }
-        }
-    }
-}
-
-void PangolinMQTT::_resendPartialTxns(){
+void H4AsyncMQTT::_resendPartialTxns(){
     std::vector<uint16_t> morituri;
     for(auto const& o:_outbound){
         mqttTraits m=o.second;
@@ -271,22 +264,32 @@ void PangolinMQTT::_resendPartialTxns(){
     }
     for(auto const& i:morituri) _ACKoutbound(i);
 }
+
+void H4AsyncMQTT::_runGuard(H4_FN_VOID f){
+    if(_state==H4AMC_RUNNING) f();
+    else Serial.print("not running - ignored\n");
+}
 //
 //      PUBLIC
 //
-void PangolinMQTT::connectMqtt(std::string client,bool session){ 
-    _cleanSession = session;
-    _clientId = client.size() ? client:_HAL_uniqueName("H4AMC"H4AMC_VERSION);
-    connect();
+void H4AsyncMQTT::connectMqtt(std::string client,bool session){
+    if(!connected()){
+        _cleanSession = session;
+        _clientId = client.size() ? client:_HAL_uniqueName("H4AMC"H4AMC_VERSION);
+        connect();
+        Serial.printf("INITAL CONNECT...start timer anyway\n");
+        h4.every(10000,[=]{ Serial.printf("Attempt reconnection\n"); connect(); },[]{ Serial.printf("RCX stopped\n"); },H4AMC_RCX_ID,true);
+    } else XDISPATCH_V(Error,ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
 }
 
-void PangolinMQTT::disconnect() {
+void H4AsyncMQTT::disconnect() {
     static uint8_t  G[]={DISCONNECT,0};
     H4AMC_PRINT1("USER DCX\n");
-    _cnxGuard([=]{ txdata(G,2,false); });
+    if(_state==H4AMC_RUNNING) txdata(G,2,false);
+    else XDISPATCH_V(Error,ERR_CONN,H4AMC_USER_LOGIC_ERROR);
 }
 
-std::string PangolinMQTT::errorstring(int e){
+std::string H4AsyncMQTT::errorstring(int e){
     #ifdef H4AMC_DEBUG
         if(_errorNames.count(e)) return _errorNames[e];
         else return stringFromInt(e); 
@@ -295,26 +298,31 @@ std::string PangolinMQTT::errorstring(int e){
     #endif
 }
 
-void PangolinMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, bool retain) { _cnxGuard([=]{ PublishPacket pub(topic,qos,retain,payload,length,0,0); }); }
+void H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, bool retain) { _runGuard([=]{ PublishPacket pub(topic,qos,retain,payload,length,0,0); }); }
 
-void PangolinMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, bool retain) { 
-    _cnxGuard([=]{ publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, retain); });
+void H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, bool retain) { 
+    _runGuard([=]{ publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, retain); });
 }
 
-void PangolinMQTT::subscribe(const char* topic, uint8_t qos) { _cnxGuard([=]{ SubscribePacket sub(topic,qos); }); }
+void H4AsyncMQTT::setKeepAlive(uint16_t keepAlive){
+    if(keepAlive < (H4AS_SCAVENGE_FREQ - 1000)) _keepalive=keepAlive;
+    else XDISPATCH_V(Error,H4AMC_KEEPALIVE_TOO_LONG,(H4AS_SCAVENGE_FREQ - 1000));
+}
 
-void PangolinMQTT::subscribe(std::initializer_list<const char*> topix, uint8_t qos) { _cnxGuard([=]{ SubscribePacket sub(topix,qos); }); }
+void H4AsyncMQTT::subscribe(const char* topic, uint8_t qos) { _runGuard([=]{ SubscribePacket sub(topic,qos); }); }
 
-void PangolinMQTT::unsubscribe(const char* topic) {_cnxGuard([=]{ UnsubscribePacket usp(topic); }); }
+void H4AsyncMQTT::subscribe(std::initializer_list<const char*> topix, uint8_t qos) { _runGuard([=]{ SubscribePacket sub(topix,qos); }); }
 
-void PangolinMQTT::unsubscribe(std::initializer_list<const char*> topix) {_cnxGuard([=]{  UnsubscribePacket usp(topix); }); }
+void H4AsyncMQTT::unsubscribe(const char* topic) {_runGuard([=]{ UnsubscribePacket usp(topic); }); }
+
+void H4AsyncMQTT::unsubscribe(std::initializer_list<const char*> topix) {_runGuard([=]{  UnsubscribePacket usp(topix); }); }
 //
 //
 //
 #if H4AMC_DEBUG
-void PangolinMQTT::dump(){
+void H4AsyncMQTT::dump(){
 #if H4AT_DEBUG
-    H4AsyncTCP::dump();
+    H4AsyncClient::dump();
 #endif
     H4AMC_PRINT4("DUMP ALL %d PACKETS OUTBOUND\n",_outbound.size());
     for(auto & p:_outbound) p.second.dump();

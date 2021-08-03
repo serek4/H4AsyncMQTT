@@ -1,8 +1,8 @@
 #pragma once
 
 #include<pmbtools.h>
-#include<pango_config.h>
-#include<pango_common.h>
+#include<h4amc_config.h>
+#include<h4amc_common.h>
 #include<map>
 
 enum :uint8_t {

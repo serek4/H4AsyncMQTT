@@ -3,7 +3,7 @@
 #######################################
 
 mqttClient	KEYWORD1
-PangolinMQTT	KEYWORD1
+H4AsyncMQTT	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
