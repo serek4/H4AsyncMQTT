@@ -1,36 +1,40 @@
 /*
-MIT License
+Creative Commons: Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 
-Copyright (c) 2020 Phil Bowles with huge thanks to Adam Sharp http://threeorbs.co.uk
-for testing, debugging, moral support and permanent good humour.
+You are free to:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Share — copy and redistribute the material in any medium or format
+Adapt — remix, transform, and build upon the material
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The licensor cannot revoke these freedoms as long as you follow the license terms. Under the following terms:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made. 
+You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+
+NonCommercial — You may not use the material for commercial purposes.
+
+ShareAlike — If you remix, transform, or build upon the material, you must distribute your contributions 
+under the same license as the original.
+
+No additional restrictions — You may not apply legal terms or technological measures that legally restrict others 
+from doing anything the license permits.
+
+Notices:
+You do not have to comply with the license for elements of the material in the public domain or where your use is 
+permitted by an applicable exception or limitation. To discuss an exception, contact the author:
+
+philbowles2012@gmail.com
+
+No warranties are given. The license may not give you all of the permissions necessary for your intended use. 
+For example, other rights such as publicity, privacy, or moral rights may limit how you use the material.
 */
 #include <H4AsyncMQTT.h>
-#include <h4async_config.h>
 #include "Packet.h"
-#include "mqTraits.h"
 
+H4AMC_MEM_POOL          mbx::pool;
 H4AMC_PACKET_MAP        H4AsyncMQTT::_inbound;
 H4AMC_PACKET_MAP        H4AsyncMQTT::_outbound;
-
-H4AsyncMQTT*           H4AMCV3;
 
 H4_INT_MAP H4AsyncMQTT::_errorNames={
 #if H4AMC_DEBUG
@@ -46,65 +50,13 @@ H4_INT_MAP H4AsyncMQTT::_errorNames={
     {H4AMC_OUTBOUND_PUB_TOO_BIG,"H4AMC_OUTBOUND_PUB_TOO_BIG"},
     {H4AMC_BOGUS_PACKET,"H4AMC_BOGUS_PACKET"},
     {H4AMC_X_INVALID_LENGTH,"H4AMC_X_INVALID_LENGTH"},
-    {H4AMC_KEEPALIVE_TOO_LONG,"KEEPALIVE TOO LONG: MUST BE < H4AS_SCAVENGE_FREQ"},
+//    {H4AMC_KEEPALIVE_TOO_LONG,"KEEPALIVE TOO LONG: MUST BE < H4AS_SCAVENGE_FREQ"},
     {H4AMC_USER_LOGIC_ERROR,"USER LOGIC ERROR"},
 #endif
 };
 
-H4AsyncMQTT::H4AsyncMQTT(): H4AsyncClient(){
-    static uint8_t PING[]={PINGREQ,0};
-    H4AMCV3=this;
-    onConnect([=](){
-        H4AMC_PRINT1("on TCP Connect\n");
-        //setNoDelay(true);
-        h4.cancelSingleton(H4AMC_RCX_ID);
-        h4.every(_keepalive,[=]{
-            if(!connected()){ 
-                Serial.printf("Server gone away - keep client alive!\n");
-                _lastSeen=millis();
-            } else txdata(PING,2,false); 
-        },nullptr,H4AMC_KA_ID,true); // keepalive even if remote server gone away
-        ConnectPacket cp{};
-    });
+H4AsyncMQTT::H4AsyncMQTT(){
 
-    onDisconnect([=]{ 
-        _state=H4AMC_DISCONNECTED;
-        if(_cbMQTTDisconnect) _cbMQTTDisconnect();
-        Serial.printf("Disconnected - start reconnector\n");
-        h4.every(10000,[=]{ Serial.printf("Attempt reconnection\n"); connect(); },[]{ Serial.printf("RCX stopped\n"); },H4AMC_RCX_ID,true);
-    });
-
-    onError([=](int error,int info){
-        H4AMC_PRINT1("onError %d info=%d\n",error,info);
-        _notify(error,info);
-//        if(error == ERR_RST) _cbDisconnect();
-        if(error > ERR_ABRT) {
-            Serial.printf("UNRECOVERABLE cancel reconnector! %d\n",error);
-            h4.cancelSingleton(H4AMC_RCX_ID);
-            _state=H4AMC_FATAL;
-        } 
-        else {
-            Serial.printf("Allow error! %d\n",error);
-            // _cbDisconnect();
-            //h4.queueFunction([=]{ Serial.printf("QF _raw_close %d\n",error); _raw_close(this); });
-            _raw_close(this);
-        }
-    });
-
-    _rxfn=[=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); };
-}
-
-void H4AsyncMQTT::setServer(const char* url,const char* username, const char* password,const uint8_t* fingerprint){
-    _username = username;
-    _password = password;
-    TCPurl(url,fingerprint);
-}
-
-void H4AsyncMQTT::setWill(const std::string& topic, uint8_t qos, bool retain, const std::string& payload) {
-    _willTopic = topic;
-    _willQos = qos;
-    _willRetain = retain;
-    _willPayload = payload;
 }
 
 void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout){ /// refakta?
@@ -120,12 +72,56 @@ void H4AsyncMQTT::_cleanStart(){
     _clearQQ(&_inbound);
     H4AMC_PRINT4("_cleanStart clrQQ outbound\n");
     _clearQQ(&_outbound);
-    Packet::_nextId=1000; // SO much easier to differentiate client vs server IDs in Wireshark log :)
 }
 
 void H4AsyncMQTT::_clearQQ(H4AMC_PACKET_MAP* m){
     for(auto &i:*m) mbx::clear(i.second.data);
     m->clear();
+}
+
+void H4AsyncMQTT::_connect(){
+    static uint8_t PING[]={PINGREQ,0};    
+    
+    H4AMC_PRINT1("_connect %s _state=%d\n",_url.data(),_state);
+    _h4atClient->onConnect([=](){
+        H4AMC_PRINT1("on TCP Connect\n");
+        _h4atClient->nagle(true);
+        h4.cancelSingleton(H4AMC_RCX_ID);
+        H4AMC_PRINT1("KA = %d\n",_keepalive - H4AMC_HEADROOM);
+        h4.every(_keepalive - H4AMC_HEADROOM,[=]{
+            if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
+                H4AMC_PRINT1("MQTT PINGREQ\n");
+                _h4atClient->TX(PING,2,false); /// optimise
+            } //else Serial.printf("No ping: activity %d mS ago\n",(millis() - _h4atClient->_lastSeen));
+        },nullptr,H4AMC_KA_ID,true);
+        h4.queueFunction([=]{ ConnectPacket cp{this}; }); // offload required for esp32 to get off tcpip thread
+    });
+
+    _h4atClient->onDisconnect([=]{
+        H4AMC_PRINT1("onDisconnect - start reconnector\n");
+        if(_state!=H4AMC_DISCONNECTED) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
+        _state=H4AMC_DISCONNECTED;
+//        Serial.printf("CREATE NEW CLIENT!\n");
+        _h4atClient=new H4AsyncClient;
+        _startReconnector();
+    });
+
+    _h4atClient->onError([=](int error,int info){
+        H4AMC_PRINT1("onError %d info=%d\n",error,info);
+        /*
+        if(_state!=H4AMC_DISCONNECTED){
+            if(error==ERR_OK || error==ERR_RST || error==ERR_ABRT){
+//                Serial.printf("IGNORING OK RST ABRT e=%d\n",error);
+                _h4atClient->_shutdown();
+            } else _notify(error,info);
+        } //else Serial.printf("NOT CONNECTED!\n");
+        */
+        return true;
+    });
+
+    _h4atClient->onRX([=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); });
+    _h4atClient->connect(_url);
+    _startReconnector();
 }
 
 void H4AsyncMQTT::_hpDespatch(mqttTraits P){ 
@@ -138,9 +134,9 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
                 Serial.printf("FH: %u\nMB: %u\nMP: %d\n",_HAL_freeHeap(),_HAL_maxHeapBlock(),getMaxPayloadSize());
             } 
             else if(pl=="info"){ 
-                Serial.printf("H4AT  Vn: %s\n",H4ASYNC_VERSION);
-                Serial.printf("CHECK FP: %d\n",H4AT_CHECK_FINGERPRINT);
-//                Serial.printf("SAFEHEAP: %d\n",H4AT_HEAP_SAFETY);
+                Serial.printf("H4AT  Vn: %s\n",H4AT_VERSION);
+//                Serial.printf("CHECK FP: %d\n",H4AT_CHECK_FINGERPRINT);
+//                Serial.printf("SAFEHEAP: %d\n",H4T_HEAP_SAFETY);
                 Serial.printf("H4AMC Vn: %s\n",H4AMC_VERSION);
                 Serial.printf("NRETRIES: %d\n",H4AMC_MAX_RETRIES);
                 Serial.printf("session : %s\n",_cleanSession ? "clean":"dirty");
@@ -158,11 +154,11 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
 void H4AsyncMQTT::_hpDespatch(uint16_t id){ _hpDespatch(_inbound[id]); }
 
 void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
+    H4AMC_DUMP4(data,len);
     if(data[0]==PINGRESP || data[0]==UNSUBACK){
-        H4AMC_PRINT1("T=%d %s\n",millis(),mqttTraits::pktnames[data[0]]);
+        H4AMC_PRINT1("MQTT %s\n",mqttTraits::pktnames[data[0]]);
         return; // early bath
     }
-
     mqttTraits traits(data,len);
     auto i=traits.start();
     uint16_t id=traits.id;
@@ -176,9 +172,9 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
                 _resendPartialTxns();
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
 #if H4AMC_DEBUG
-                SubscribePacket pango("pango",0); // internal info during beta...will be moved back inside debug #ifdef
+                SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
 #endif
-                if(_cbMQTTConnect) _cbMQTTConnect(session);
+                if(_cbMQTTConnect) _cbMQTTConnect();
             }
             break;
         case SUBACK:
@@ -191,7 +187,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
         case PUBREC:
             {
                 _outbound[id].pubrec=true;
-                PubrelPacket prp(id);
+                PubrelPacket prp(this,id);
             }
             break;
         case PUBREL:
@@ -200,7 +196,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
                     _hpDespatch(_inbound[id]);
                     _ACK(&_inbound,id,true); // true = inbound
                 } else _notify(H4AMC_INBOUND_QOS_ACK_FAIL,id);
-                PubcompPacket pcp(id); // pubrel
+                PubcompPacket pcp(this,id); // pubrel
             }
             break;
        default:
@@ -210,6 +206,10 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
                 H4AMC_DUMP3(data,len);
             }
             break;
+    }
+    if(traits.next.second){
+        H4AMC_PRINT4("Let's go round again! %p %d\n",traits.next.first,traits.next.second);
+        _handlePacket(traits.next.first,traits.next.second);
     }
 }
 
@@ -224,14 +224,14 @@ void H4AsyncMQTT::_handlePublish(mqttTraits P){
         case 1:
             { 
                 _hpDespatch(P);
-                PubackPacket pap(id);
+                PubackPacket pap(this,id);
             }
             break;
         case 2:
         //  MQTT Spec. "method A"
             {
-                PublishPacket pub(P.topic.data(),qos,P.retain,P.payload,P.plen,0,id); // build and HOLD until PUBREL force dup=0
-                PubrecPacket pcp(id);
+                PublishPacket pub(this,P.topic.data(),qos,P.retain,P.payload,P.plen,0,id); // build and HOLD until PUBREL force dup=0
+                PubrecPacket pcpthis(this,id);
             }
             break;
     }
@@ -249,12 +249,12 @@ void H4AsyncMQTT::_resendPartialTxns(){
         if(--(m.retries)){
             if(m.pubrec){
                 H4AMC_PRINT4("WE ARE PUBREC'D ATTEMPT @ QOS2: SEND %d PUBREL\n",m.id);
-                PubrelPacket prp(m.id);
+                PubrelPacket prp(this,m.id);
             }
             else {
                 H4AMC_PRINT4("SET DUP & RESEND %d\n",m.id);
                 m.data[0]|=0x08; // set dup & resend
-                txdata(m.data,m.len,false);
+                _h4atClient->TX(m.data,m.len,false);
             }
         }
         else {
@@ -267,26 +267,31 @@ void H4AsyncMQTT::_resendPartialTxns(){
 
 void H4AsyncMQTT::_runGuard(H4_FN_VOID f){
     if(_state==H4AMC_RUNNING) f();
-    else Serial.print("not running - ignored\n");
+    else _notify(H4AMC_USER_LOGIC_ERROR,0);
 }
+
+void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,H4AMC_RCX_ID,true); }
 //
 //      PUBLIC
 //
-void H4AsyncMQTT::connectMqtt(std::string client,bool session){
-    if(!connected()){
+void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId,bool session){
+    H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s,%d)\n",url,auth,pass,clientId,session);
+    if(_state==H4AMC_DISCONNECTED){
+        _h4atClient=new H4AsyncClient;
+        _url=url;
+        _username = auth;
+        _password = pass;
         _cleanSession = session;
-        _clientId = client.size() ? client:_HAL_uniqueName("H4AMC"H4AMC_VERSION);
-        connect();
-        Serial.printf("INITAL CONNECT...start timer anyway\n");
-        h4.every(10000,[=]{ Serial.printf("Attempt reconnection\n"); connect(); },[]{ Serial.printf("RCX stopped\n"); },H4AMC_RCX_ID,true);
-    } else XDISPATCH_V(Error,ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
+        _clientId = "" ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION);
+        _connect();
+    } else if(_cbMQTTError) _cbMQTTError(ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
 }
 
 void H4AsyncMQTT::disconnect() {
     static uint8_t  G[]={DISCONNECT,0};
     H4AMC_PRINT1("USER DCX\n");
-    if(_state==H4AMC_RUNNING) txdata(G,2,false);
-    else XDISPATCH_V(Error,ERR_CONN,H4AMC_USER_LOGIC_ERROR);
+    if(_state==H4AMC_RUNNING) _h4atClient->TX(G,2,false);
+    else _h4atClient->_cbError(ERR_CONN,H4AMC_USER_LOGIC_ERROR);
 }
 
 std::string H4AsyncMQTT::errorstring(int e){
@@ -298,32 +303,33 @@ std::string H4AsyncMQTT::errorstring(int e){
     #endif
 }
 
-void H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, bool retain) { _runGuard([=]{ PublishPacket pub(topic,qos,retain,payload,length,0,0); }); }
+void H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, bool retain) { _runGuard([=]{ PublishPacket pub(this,topic,qos,retain,payload,length,0,0); }); }
 
 void H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, bool retain) { 
     _runGuard([=]{ publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, retain); });
 }
 
-void H4AsyncMQTT::setKeepAlive(uint16_t keepAlive){
-    if(keepAlive < (H4AS_SCAVENGE_FREQ - 1000)) _keepalive=keepAlive;
-    else XDISPATCH_V(Error,H4AMC_KEEPALIVE_TOO_LONG,(H4AS_SCAVENGE_FREQ - 1000));
+void H4AsyncMQTT::setWill(const char* topic, uint8_t qos, bool retain, const char* payload) {
+    H4AMC_PRINT2("setWill *%s* q=%d r=%d *%s*\n",topic,qos,retain,payload);
+    _willTopic = topic;
+    _willQos = qos;
+    _willRetain = retain;
+    _willPayload = payload;
 }
 
-void H4AsyncMQTT::subscribe(const char* topic, uint8_t qos) { _runGuard([=]{ SubscribePacket sub(topic,qos); }); }
+void H4AsyncMQTT::subscribe(const char* topic, uint8_t qos) { _runGuard([=]{ SubscribePacket sub(this,topic,qos); }); }
 
-void H4AsyncMQTT::subscribe(std::initializer_list<const char*> topix, uint8_t qos) { _runGuard([=]{ SubscribePacket sub(topix,qos); }); }
+void H4AsyncMQTT::subscribe(std::initializer_list<const char*> topix, uint8_t qos) { _runGuard([=]{ SubscribePacket sub(this,topix,qos); }); }
 
-void H4AsyncMQTT::unsubscribe(const char* topic) {_runGuard([=]{ UnsubscribePacket usp(topic); }); }
+void H4AsyncMQTT::unsubscribe(const char* topic) {_runGuard([=]{ UnsubscribePacket usp(this,topic); }); }
 
-void H4AsyncMQTT::unsubscribe(std::initializer_list<const char*> topix) {_runGuard([=]{  UnsubscribePacket usp(topix); }); }
+void H4AsyncMQTT::unsubscribe(std::initializer_list<const char*> topix) {_runGuard([=]{  UnsubscribePacket usp(this,topix); }); }
 //
 //
 //
-#if H4AMC_DEBUG
 void H4AsyncMQTT::dump(){
-#if H4AT_DEBUG
-    H4AsyncClient::dump();
-#endif
+#if H4AMC_DEBUG
+
     H4AMC_PRINT4("DUMP ALL %d PACKETS OUTBOUND\n",_outbound.size());
     for(auto & p:_outbound) p.second.dump();
 
@@ -331,5 +337,5 @@ void H4AsyncMQTT::dump(){
     for(auto & p:_inbound) p.second.dump();
 
     H4AMC_PRINT4("\n");
-}
 #endif
+}

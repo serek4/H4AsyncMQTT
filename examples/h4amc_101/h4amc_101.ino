@@ -1,3 +1,34 @@
+/*
+Creative Commons: Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+
+You are free to:
+
+Share — copy and redistribute the material in any medium or format
+Adapt — remix, transform, and build upon the material
+
+The licensor cannot revoke these freedoms as long as you follow the license terms. Under the following terms:
+
+Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made. 
+You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+
+NonCommercial — You may not use the material for commercial purposes.
+
+ShareAlike — If you remix, transform, or build upon the material, you must distribute your contributions 
+under the same license as the original.
+
+No additional restrictions — You may not apply legal terms or technological measures that legally restrict others 
+from doing anything the license permits.
+
+Notices:
+You do not have to comply with the license for elements of the material in the public domain or where your use is 
+permitted by an applicable exception or limitation. To discuss an exception, contact the author:
+
+philbowles2012@gmail.com
+
+No warranties are given. The license may not give you all of the permissions necessary for your intended use. 
+For example, other rights such as publicity, privacy, or moral rights may limit how you use the material.
+*/
 #include <H4AsyncMQTT.h>
 
 H4 h4(115200);
@@ -10,7 +41,7 @@ H4AsyncMQTT mqttClient;
 // do the same in async_config.h of the PATCHED ESPAsyncTCP library!! 
 
 //#define MQTT_URL "https://192.168.1.21:8883"
-#define MQTT_URL "http://192.168.1.20:1883"
+#define MQTT_URL "192.168.1.20:1883"
 const uint8_t* cert=nullptr;
 
 // if you provide a valid certificate when connecting, it will be checked and fail on no match
@@ -37,62 +68,55 @@ char big[BIG_SIZE];
 
 void onMqttError(int e,int i){
   if(e < H4AMC_ERROR_BASE){
-    Serial.printf("H4ASYNC ERROR %d [%s] info=%d[0x%08x]\n",e,H4AsyncClient::errorstring(e).data(),i,i);
+    Serial.printf("H4ASYNC ERROR %d [%s] info=%d[%p]\n",e,H4AsyncClient::errorstring(e).data(),i,i);
   }
   else {
     if(e < H4AMC_ERROR_MAX){
-       Serial.printf("H4AsyncMQTT ERROR %d [%s] info=%d[0x%08x]\n",e,H4AsyncMQTT::errorstring(e).data(),i,i);   
+       Serial.printf("H4AsyncMQTT ERROR %d [%s] info=%d[%p]\n",e,H4AsyncMQTT::errorstring(e).data(),i,i);   
     }
-    else Serial.printf("UNKNOWN ERROR: %u extra info %d[0x%08x]\n",e,i,i);
+    else Serial.printf("UNKNOWN ERROR: %u extra info %d[%p]\n",e,i,i);
   }
 }
+H4_TIMER sender;
 
-void onMqttConnect(bool session) {
-  Serial.printf("USER: Connected as %s session=%d max payload size=%d\n",mqttClient.getClientId().data(),session,mqttClient.getMaxPayloadSize());
+void onMqttConnect() {
+  Serial.printf("USER: Connected as %s MP=%d\n",mqttClient.getClientId().data(),mqttClient.getMaxPayloadSize());
 
   Serial.println("USER: Subscribing at QoS 2");
-//  mqttClient.subscribe({"test","multi2","fully/compliant"}, 0);
-  mqttClient.subscribe({"test"}, 0);
-//  Serial.printf("USER: T=%u Publishing at QoS 0\n",millis());
-  mqttClient.publish("test",big,BIG_SIZE,0);
-//  Serial.printf("USER: T=%u Publishing at QoS 1\n",millis());
-//  mqttClient.publish("test",pload1,strlen(pload1),1); 
-//  Serial.printf("USER: T=%u Publishing at QoS 2\n",millis());
-//  mqttClient.publish("test",pload2,strlen(pload2),2);
-/*
-  h4.every(10000,[]{
-    // simple way to publish int types  as strings using printf format
+  mqttClient.subscribe({"test","multi2","fully/compliant"}, 2);
+  mqttClient.unsubscribe({"multi2","fully/compliant"});
+
+  sender=h4.every(30000,[]{
+    Serial.printf("T=%u Publish:\n",millis());
+    //simple way to publish int types  as strings using printf format
     mqttClient.publish("test",_HAL_freeHeap(),"%u"); 
-    mqttClient.publish("test",-33); 
+//    mqttClient.publish("test",-33);
+//    mqttClient.publish("test",big,BIG_SIZE,0);
+//    mqttClient.publish("test",pload0,strlen(pload0),0); 
+//    mqttClient.publish("test",pload1,strlen(pload1),1); 
+//    mqttClient.publish("test",pload2,strlen(pload2),2);    
   });
-*/
-  //mqttClient.unsubscribe({"multi2","fully/compliant"});
 }
 
 void onMqttMessage(const char* topic, const uint8_t* payload, size_t len,uint8_t qos,bool retain,bool dup) {
-  Serial.printf("\nUSER: H=%u Message %s qos%d dup=%d retain=%d len=%d\n",_HAL_freeHeap(),topic,qos,dup,retain,len);
+  Serial.printf("Receive: H=%u Message %s qos%d dup=%d retain=%d len=%d\n",_HAL_freeHeap(),topic,qos,dup,retain,len);
   //dumphex(payload,len);
   //Serial.println();
 }
 
-void onMqttDisconnect(int8_t reason) {
-  Serial.printf("USER: Disconnected from MQTT reason=%d\n",reason);
-}
+void onMqttDisconnect() { Serial.printf("USER: Disconnected from MQTT\n"); h4.cancel(sender); }
 
 void h4setup(){
   for(auto i=0;i<BIG_SIZE;i++) big[i]=i;
-  Serial.begin(115200);
-  delay(250); //why???
   Serial.printf("\nH4AsyncMQTT v%s running @ debug level %d heap=%u\n",H4AMC_VERSION,H4AMC_DEBUG,_HAL_freeHeap()); 
 
-  mqttClient.onMqttError(onMqttError);
-  mqttClient.onMqttConnect(onMqttConnect);
-  mqttClient.onMqttDisconnect(onMqttDisconnect);
-  mqttClient.onMqttMessage(onMqttMessage);
-  mqttClient.setServer(MQTT_URL,mqAuth,mqPass,cert);
-/*    mqttClient.setWill("DIED",2,false,"probably still some bugs");
+  mqttClient.onError(onMqttError);
+  mqttClient.onConnect(onMqttConnect);
+  mqttClient.onDisconnect(onMqttDisconnect);
+  mqttClient.onMessage(onMqttMessage);
+//  mqttClient.setServer(MQTT_URL,mqAuth,mqPass,cert);
+  mqttClient.setWill("DIED",2,false,"probably still some bugs");
 //  mqttClient.setKeepAlive(RECONNECT_DELAY_M *3); // very rarely need to change this (if ever)
-*/
   WiFi.begin("XXXXXXXX","XXXXXXXX");
   while(WiFi.status()!=WL_CONNECTED){
     Serial.print(".");
@@ -101,5 +125,5 @@ void h4setup(){
   
   Serial.printf("WIFI CONNECTED IP=%s\n",WiFi.localIP().toString().c_str());
 
-  mqttClient.connectMqtt("Pangolin_101",START_WITH_CLEAN_SESSION);
+  mqttClient.connect(MQTT_URL,mqAuth,mqPass);
 }

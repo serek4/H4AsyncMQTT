@@ -29,19 +29,41 @@ philbowles2012@gmail.com
 No warranties are given. The license may not give you all of the permissions necessary for your intended use. 
 For example, other rights such as publicity, privacy, or moral rights may limit how you use the material.
 */
-#define H4AMC_VERSION "0.0.1"
-#define H4AMC_ERROR_BASE 100
-/*
-    Debug levels: 
-    0 - No debug messages
-    1 - connection / disconnection + paacket names TX/RX messages
-    2 - level 1 + MQTT packet types
-    3 - level 2 + MQTT packet info (excluding payload)
-    4 - everything including full payload hex dump (and deep diagnostics!)
-*/
+#include "H4AsyncMQTT.h"
 
-#define H4AMC_DEBUG 0
+mbx::mbx(uint8_t* p,size_t s,bool copy,uint8_t f): len(s),managed(copy),flags(f){
+    if(managed){
+        data=getMemory(len);
+        if(data) {
+            memcpy(data,p,len);
+            H4AMC_PRINT4("MBX %p len=%d COPIED FROM %p POOL=%d\n",(void*) data,len,p,pool.size());
+        }
+        else H4AMC_PRINT4("MBX %p len=%d MALLOC FAIL\n",(void*) data,len);
+    } 
+    else {
+        H4AMC_PRINT4("MBX %p len=%d UNMANAGED POOL=%d\n",p,len,pool.size());
+        data=p;
+    }
+}
+//
+// public
+//
+void mbx::clear(uint8_t* p){
+    if(pool.count(p)) {
+        H4AMC_PRINT4("MBX DEL BLOCK %p\n",p);
+        free(p);
+        pool.erase(p);
+        H4AMC_PRINT4("MBX DEL %p POOL NOW %d\n",p,pool.size());
+    } else H4AMC_PRINT4("INSANITY? %p NOT IN POOL!\n",p);
+}
 
-#define H4AMC_HEADROOM        2000
+void mbx::clear(){ clear(data); }
 
-#define H4AMC_MAX_RETRIES        2
+uint8_t* mbx::getMemory(size_t size){
+    uint8_t* mm=static_cast<uint8_t*>(malloc(size));
+    if(mm){
+        pool.insert(mm);
+        H4AMC_PRINT4("MBX GM %p len=%d POOL=%d\n",mm,size,pool.size());
+    } else H4AMC_PRINT4("********** MBX FAIL STATUS: FH=%u MXBLK=%u ASKED:%u\n",_HAL_freeHeap(),_HAL_maxHeapBlock(),size);
+    return mm;
+}

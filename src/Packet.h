@@ -1,37 +1,42 @@
 /*
-MIT License
+Creative Commons: Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 
-Copyright (c) 2020 Phil Bowles with huge thanks to Adam Sharp http://threeorbs.co.uk
-for testing, debugging, moral support and permanent good humour.
+You are free to:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Share — copy and redistribute the material in any medium or format
+Adapt — remix, transform, and build upon the material
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The licensor cannot revoke these freedoms as long as you follow the license terms. Under the following terms:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made. 
+You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+
+NonCommercial — You may not use the material for commercial purposes.
+
+ShareAlike — If you remix, transform, or build upon the material, you must distribute your contributions 
+under the same license as the original.
+
+No additional restrictions — You may not apply legal terms or technological measures that legally restrict others 
+from doing anything the license permits.
+
+Notices:
+You do not have to comply with the license for elements of the material in the public domain or where your use is 
+permitted by an applicable exception or limitation. To discuss an exception, contact the author:
+
+philbowles2012@gmail.com
+
+No warranties are given. The license may not give you all of the permissions necessary for your intended use. 
+For example, other rights such as publicity, privacy, or moral rights may limit how you use the material.
 */
 #pragma once
 #include <H4AsyncMQTT.h>
-#include <mqTraits.h>
 
 using H4AMC_BLOCK_Q        = std::queue<mbx>;
 
 class Packet {
-    friend class H4AsyncMQTT;
     protected:
-        static  uint16_t         _nextId;
+                H4AsyncMQTT*     _parent;
                 uint16_t         _id=0; 
                 bool             _hasId=false;
                 uint8_t          _controlcode;
@@ -48,40 +53,41 @@ class Packet {
                 uint8_t*         _poke16(uint8_t* p,uint16_t u);
                 void             _stringblock(const std::string& s);
     public:
-        Packet(uint8_t controlcode,bool hasid=false): _controlcode(controlcode),_hasId(hasid){}
+        Packet(H4AsyncMQTT* p,uint8_t controlcode,bool hasid=false): _parent(p),_controlcode(controlcode),_hasId(hasid){}
 };
+
 class ConnectPacket: public Packet {
             uint8_t  protocol[8]={0x0,0x4,'M','Q','T','T',4,0}; // 3.1.1
     public:
-        ConnectPacket();
+        ConnectPacket(H4AsyncMQTT* p);
 };
 
 struct PubackPacket: public Packet {
     public:
-        PubackPacket(uint16_t id): Packet(PUBACK) { _idGarbage(id); }
+        PubackPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBACK) { _idGarbage(id); }
 };
 class PubrecPacket: public Packet {
     public:
-        PubrecPacket(uint16_t id): Packet(PUBREC) { _idGarbage(id); }
+        PubrecPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREC) { _idGarbage(id); }
 };
 class PubrelPacket: public Packet {
     public:
-        PubrelPacket(uint16_t id): Packet(PUBREL) { _idGarbage(id); }
+        PubrelPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREL) { _idGarbage(id); }
 };
 class PubcompPacket: public Packet {
     public:
-        PubcompPacket(uint16_t id): Packet(PUBCOMP) { _idGarbage(id); }  
+        PubcompPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBCOMP) { _idGarbage(id); }  
 };
 class SubscribePacket: public Packet {
     public:
-        SubscribePacket(const std::string& topic,uint8_t qos): Packet(SUBSCRIBE,true) { _multiTopic({topic.data()},qos); }
-        SubscribePacket(std::initializer_list<const char*> topix,uint8_t qos): Packet(SUBSCRIBE,true) { _multiTopic(topix,qos); }
+        SubscribePacket(H4AsyncMQTT* p,const std::string& topic,uint8_t qos): Packet(p,SUBSCRIBE,true) { _multiTopic({topic.data()},qos); }
+        SubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix,uint8_t qos): Packet(p,SUBSCRIBE,true) { _multiTopic(topix,qos); }
 };
 
 class UnsubscribePacket: public Packet {
     public:
-        UnsubscribePacket(const std::string& topic): Packet(UNSUBSCRIBE,true) { _multiTopic({topic.data()}); }
-        UnsubscribePacket(std::initializer_list<const char*> topix): Packet(UNSUBSCRIBE,true) { _multiTopic(topix); }
+        UnsubscribePacket(H4AsyncMQTT* p,const std::string& topic): Packet(p,UNSUBSCRIBE,true) { _multiTopic({topic.data()}); }
+        UnsubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix): Packet(p,UNSUBSCRIBE,true) { _multiTopic(topix); }
 };
 
 class PublishPacket: public Packet {
@@ -92,5 +98,5 @@ class PublishPacket: public Packet {
         bool            _dup;
         uint16_t        _givenId=0;
     public:
-        PublishPacket(const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId=0);
+        PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId=0);
 };

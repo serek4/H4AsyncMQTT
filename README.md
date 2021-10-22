@@ -1,6 +1,11 @@
 ![mbm](assets/pangoplain.jpg)
 
 # Asynchronous ArduinoIDE MQTT 3.1.1 client library for ESP8266, ESP32
+---
+
+Licence: ![licence](https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png) Creative Commons: Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) [Legal Text](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode)
+
+# ***N.B. This licence expressly prohibits commercial use***
 
 ---
 
@@ -87,7 +92,7 @@ SEE [Installation](#installation)
 ||[Forked AsyncTCP](https://github.com/philbowles/AsyncTCP-master)|"Glue" to LwIP (ESP8266)| Important bugfixes |
 ||[Forked ESPAsyncTCP](https://github.com/philbowles/ESPAsyncTCP-master)|"Glue" to LwIP(ESP32)| Missing features added |
 ||[Forked ESPAsyncWebserver](https://github.com/philbowles/ESPAsyncWebServer)| Basis of webUI in H4Plugins| Several major bugfixes |
-|![roadmap](assets/common/tools_icon.jpg)|[PMB Tools](https://github.com/philbowles/pmbtools)|'32/'8266 HAL and utility functions| |
+|![roadmap](assets/common/tools_icon.jpg)|[PMB Tools](https://github.com/philbowles/H4Tools)|'32/'8266 HAL and utility functions| |
 |![roadmap](assets/common/H4Async_icon.jpg)|[H4AsyncClient](https://github.com/philbowles/H4AsyncClient)|Simple Large-payload Async TCP| API-compatible with ESPAsyncTCP, seamless TLS/SSL |
 |![roadmap](assets/common/pangolin_icon.jpg)|[H4AsyncMQTT](https://github.com/philbowles/H4AsyncMQTT)|Async MQTT Client|QoS 0/1/2 Fully 3.1.1 compliant. Large payloads |
 |![roadmap](assets/common/armadillo_icon.jpg)|[ArmadilloHTTP](https://github.com/philbowles/ArmadilloHTTP)|Async HTTP/S Client| Simple send/callback of large payloads |

@@ -55,7 +55,7 @@ H4AsyncMQTT Provides a version of the `publish` API which operates on common ari
 int myvalue=123456;
 
 mqttClient.publish("mytopic/integer",myvalue); // publishes "123456" with length=6 (default format is %d)
-mqttClient.publish("mytopic/integer",myvalue,"0x%08X"); // publishes "0x0001E240" with length=10
+mqttClient.publish("mytopic/integer",myvalue,"%p"); // publishes "0x0001E240" with length=10
 ...
 ```
 

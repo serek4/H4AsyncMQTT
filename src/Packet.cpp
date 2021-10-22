@@ -1,31 +1,36 @@
 /*
-MIT License
+Creative Commons: Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)
+https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 
-Copyright (c) 2020 Phil Bowles with huge thanks to Adam Sharp http://threeorbs.co.uk
-for testing, debugging, moral support and permanent good humour.
+You are free to:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Share — copy and redistribute the material in any medium or format
+Adapt — remix, transform, and build upon the material
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The licensor cannot revoke these freedoms as long as you follow the license terms. Under the following terms:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made. 
+You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+
+NonCommercial — You may not use the material for commercial purposes.
+
+ShareAlike — If you remix, transform, or build upon the material, you must distribute your contributions 
+under the same license as the original.
+
+No additional restrictions — You may not apply legal terms or technological measures that legally restrict others 
+from doing anything the license permits.
+
+Notices:
+You do not have to comply with the license for elements of the material in the public domain or where your use is 
+permitted by an applicable exception or limitation. To discuss an exception, contact the author:
+
+philbowles2012@gmail.com
+
+No warranties are given. The license may not give you all of the permissions necessary for your intended use. 
+For example, other rights such as publicity, privacy, or moral rights may limit how you use the material.
 */
 #include<H4AsyncMQTT.h>
 #include<Packet.h>
-
-uint16_t                            Packet::_nextId=1000;
 
 void Packet::_build(bool hold){
     uint8_t* virgin;
@@ -43,7 +48,7 @@ void Packet::_build(bool hold){
     } while ( X > 0 );
     _bs+=1+rl.size();
     uint8_t* snd_buf=virgin=mbx::getMemory(_bs);
-    H4AMC_PRINT4("PACKET CREATED @ 0x%08x len=%d\n",snd_buf,_bs);
+    H4AMC_PRINT4("PACKET CREATED @ %p len=%d\n",snd_buf,_bs);
     if(snd_buf){
         *snd_buf++=_controlcode;
         for(auto const& r:rl) *snd_buf++=r;
@@ -62,22 +67,26 @@ void Packet::_build(bool hold){
         _end(snd_buf,virgin);
         if(!hold) {
 #if H4AMC_DEBUG
-            mqttTraits traits(virgin,_bs);
+            if((_controlcode & 0xf0) != PUBLISH) mqttTraits traits(virgin,_bs);
 #endif
-            H4AMCV3->txdata(virgin,_bs,false);
+            _parent->_h4atClient->TX(virgin,_bs,false);
         }
-    }  
-    else H4AMCV3->_notify(ERR_MEM,_bs);
+    } else _parent->_notify(ERR_MEM,_bs);
 }
 
 void Packet::_idGarbage(uint16_t id){
-    uint8_t  G[]={_controlcode,2,(id & 0xff00) >> 8,id & 0xff};
-    H4AMCV3->txdata(&G[0],4,true);
+    uint8_t hi=(id & 0xff00) >> 8;
+    uint8_t lo=id & 0xff;
+    uint8_t  G[]={_controlcode,2,hi,lo};
+#if H4AMC_DEBUG
+    mqttTraits(&G[0],4);
+#endif
+    _parent->_h4atClient->TX(&G[0],4,true);
 }
 
 void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
     static std::vector<std::string> topics;
-    _id=++_nextId;
+    _id=++_parent->_nextId;
     _begin=[=]{
         for(auto &t:topix){
             topics.push_back(t);
@@ -111,37 +120,38 @@ void Packet::_stringblock(const std::string& s){
     _blox.push(mbx((uint8_t*) s.data(),sz,true));
 }
 
-ConnectPacket::ConnectPacket(): Packet(CONNECT){
+ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     _bs=10;
     _begin=[=]{
-        if(H4AMCV3->_cleanSession) protocol[7]|=CLEAN_SESSION;
-        if(H4AMCV3->_willRetain) protocol[7]|=WILL_RETAIN;
-        if(H4AMCV3->_willQos) protocol[7]|=(H4AMCV3->_willQos==1) ? WILL_QOS1:WILL_QOS2;
-        _stringblock(H4AMCV3->_clientId);
-        if(H4AMCV3->_willTopic.size()){
-            _stringblock(H4AMCV3->_willTopic);
-            _stringblock(H4AMCV3->_willPayload);
+        if(_parent->_cleanSession) protocol[7]|=CLEAN_SESSION;
+        if(_parent->_willRetain) protocol[7]|=WILL_RETAIN;
+        if(_parent->_willQos) protocol[7]|=(_parent->_willQos==1) ? WILL_QOS1:WILL_QOS2;
+        _stringblock(_parent->_clientId);
+        if(_parent->_willTopic.size()){
+            _stringblock(_parent->_willTopic);
+            _stringblock(_parent->_willPayload);
             protocol[7]|=WILL;
         }
-        if(H4AMCV3->_username.size()){
-            _stringblock(H4AMCV3->_username);
+        if(_parent->_username.size()){
+            _stringblock(_parent->_username);
             protocol[7]|=USERNAME;
         }
-        if(H4AMCV3->_password.size()){
-            _stringblock(H4AMCV3->_password);
+        if(_parent->_password.size()){
+            _stringblock(_parent->_password);
             protocol[7]|=PASSWORD;
         }
     };
     _middle=[=](uint8_t* p){
         memcpy(p,&protocol,8);p+=8;
-        return _poke16(p,H4AMCV3->_keepalive);
+        return _poke16(p,_parent->_keepalive);
     };
     _build();
 }
 
-PublishPacket::PublishPacket(const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId):
-    _topic(topic),_qos(qos),_retain(retain),_length(length),_dup(dup),_givenId(givenId),Packet(PUBLISH) {
-        if(length < H4AMCV3->getMaxPayloadSize()){
+PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId):
+    _topic(topic),_qos(qos),_retain(retain),_length(length),_dup(dup),_givenId(givenId),Packet(p,PUBLISH) {
+
+        if(length < _parent->getMaxPayloadSize()){
             _begin=[this]{ 
                 _stringblock(_topic.c_str());
                 _bs+=_length;
@@ -149,7 +159,7 @@ PublishPacket::PublishPacket(const char* topic, uint8_t qos, bool retain, const 
                 flags|=(_dup << 3);
             //
                 if(_qos) {
-                    _id=_givenId ? _givenId:(++_nextId);
+                    _id=_givenId ? _givenId:(++_parent->_nextId);
                     flags|=(_qos << 1);
                     _bs+=2; // because Packet id will be added
                 }
@@ -164,5 +174,8 @@ PublishPacket::PublishPacket(const char* topic, uint8_t qos, bool retain, const 
                 else if(_qos) H4AsyncMQTT::_outbound[_id]=T;
             };
             _build(_givenId);
-        } else H4AMCV3->_notify(_givenId ? H4AMC_INBOUND_PUB_TOO_BIG:H4AMC_OUTBOUND_PUB_TOO_BIG,length);
+        } else {
+            H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,_parent->getMaxPayloadSize());
+            _parent->_notify(_givenId ? H4AMC_INBOUND_PUB_TOO_BIG:H4AMC_OUTBOUND_PUB_TOO_BIG,length);
+        }
 }
