@@ -90,7 +90,7 @@ void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
     _begin=[=]{
         for(auto &t:topix){
             topics.push_back(t);
-            _bs+=(_controlcode==0x82 ? 3:2)+strlen(t);
+            _bs+=(_controlcode==SUBSCRIBE ? 3:2)+strlen(t);
         }
     };
     _middle=[=](uint8_t* p){
@@ -99,10 +99,15 @@ void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
             p=_poke16(p,n);
             memcpy(p,t.data(),n);
             p+=n;
-            if(_controlcode==0x82) *p++=qos;
+            if(_controlcode==SUBSCRIBE) *p++=qos;
         }
         return p;
     };
+    _end=[=](uint8_t* p,uint8_t* base){
+        mqttTraits T(base,_bs);
+        H4AsyncMQTT::_outbound[_id]=T;  // To be released on SUBACK
+    };
+
     _build();
     topics.clear();
     topics.shrink_to_fit();
@@ -145,6 +150,10 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
         memcpy(p,&protocol,8);p+=8;
         return _poke16(p,_parent->_keepalive);
     };
+    _end=[=](uint8_t* p,uint8_t* base){
+        mqttTraits T(base,_bs);
+        H4AsyncMQTT::_outbound[0]=T;  // To be released on CONNACK
+    };
     _build();
 }
 
@@ -172,6 +181,8 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool
                 mqttTraits T(base,_bs);
                 if(_givenId) H4AsyncMQTT::_inbound[_id]=T;
                 else if(_qos) H4AsyncMQTT::_outbound[_id]=T;
+                else
+                    h4.once(10000U /* H4AT_WRITE_TIMEOUT */,[=](){mbx::clear(base);}); // Initial fix to QoS 0 memory leak.
             };
             _build(_givenId);
         } else {

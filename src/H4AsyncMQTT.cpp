@@ -118,6 +118,12 @@ void H4AsyncMQTT::_connect(){
         */
         return true;
     });
+    _h4atClient->onConnectFail([=](){
+        H4AMC_PRINT1("onConnectFail - start reconnector\n");
+        _state = H4AMC_DISCONNECTED;
+        _h4atClient=new H4AsyncClient;
+        _startReconnector();
+    });
 
     _h4atClient->onRX([=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); });
     _h4atClient->connect(_url);
@@ -155,7 +161,7 @@ void H4AsyncMQTT::_hpDespatch(uint16_t id){ _hpDespatch(_inbound[id]); }
 
 void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
     H4AMC_DUMP4(data,len);
-    if(data[0]==PINGRESP || data[0]==UNSUBACK){
+    if(data[0]==PINGRESP || data[0]==UNSUBACK){ // [ ] _ACKoutbound of UNSUBACK packet?
         H4AMC_PRINT1("MQTT %s\n",mqttTraits::pktnames[data[0]]);
         return; // early bath
     }
@@ -169,6 +175,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
             else {
                 _state=H4AMC_RUNNING;
                 bool session=i[0] & 0x01;
+                _ACKoutbound(0); // ACK connect to clear it from POOL.
                 _resendPartialTxns();
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
 #if H4AMC_DEBUG
@@ -179,6 +186,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
             break;
         case SUBACK:
             if(i[2] & 0x80) _notify(H4AMC_SUBSCRIBE_FAIL,id);
+            else _ACKoutbound(id);  // MAX retries applies??
             break;
         case PUBACK:
         case PUBCOMP:
@@ -267,7 +275,7 @@ void H4AsyncMQTT::_resendPartialTxns(){
 
 void H4AsyncMQTT::_runGuard(H4_FN_VOID f){
     if(_state==H4AMC_RUNNING) f();
-    else _notify(H4AMC_USER_LOGIC_ERROR,0);
+    else _notify(0,H4AMC_USER_LOGIC_ERROR);
 }
 
 void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,H4AMC_RCX_ID,true); }
@@ -284,6 +292,7 @@ void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,cons
         _cleanSession = session;
         _clientId = "" ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION);
         _connect();
+        H4AsyncClient::_scavenge();
     } else if(_cbMQTTError) _cbMQTTError(ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
 }
 

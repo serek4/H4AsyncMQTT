@@ -128,7 +128,7 @@ class mqttTraits {
                 std::string     topic;
                 uint8_t*        payload;
                 size_t          plen;
-                bool            pubrec;
+                bool            pubrec=0;
                 size_t          retries=H4AMC_MAX_RETRIES;
                 std::pair<uint8_t*,size_t> next;
                 
@@ -185,9 +185,12 @@ class mbx {
         static  void            clear(uint8_t*);
         static  uint8_t*        getMemory(size_t size);
         static  void            dump(size_t slice=32){
-        #if H4AT_DEBUG
+#if H4AMC_DEBUG
+            H4AMC_PRINT1("Memory POOL DUMP s=%d\n", pool.size());
+            for (auto &p:pool) Serial.printf("%p\t",p);
+            Serial.println();
             for(auto &p:pool) dumphex(p,slice);
-        #endif
+#endif
         }
 };
 class H4AsyncMQTT {
