@@ -159,7 +159,7 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
 
 void H4AsyncMQTT::_hpDespatch(uint16_t id){ _hpDespatch(_inbound[id]); }
 
-void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
+void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     H4AMC_DUMP4(data,len);
     if(data[0]==PINGRESP || data[0]==UNSUBACK){ // [ ] _ACKoutbound of UNSUBACK packet?
         H4AMC_PRINT1("MQTT %s\n",mqttTraits::pktnames[data[0]]);
@@ -217,7 +217,12 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len){
     }
     if(traits.next.second){
         H4AMC_PRINT4("Let's go round again! %p %d\n",traits.next.first,traits.next.second);
-        _handlePacket(traits.next.first,traits.next.second);
+        if (n_handled < 10)
+            _handlePacket(traits.next.first,traits.next.second, n_handled + 1);
+        else {  // Relay off to another call tree to avoid memory exhaustion / stack overflow / watchdog reset
+            H4AMC_PRINT4("Too many packets to handle, saving stack to another call tree\n");
+            h4.queueFunction([=]() { _handlePacket(traits.next.first,traits.next.second, 0); });
+        }
     }
 }
 
@@ -251,6 +256,8 @@ void H4AsyncMQTT::_notify(int e,int info){
 }
 
 void H4AsyncMQTT::_resendPartialTxns(){
+    // Check whether the messages are outdated...
+    // Or regularly resend them...?
     std::vector<uint16_t> morituri;
     for(auto const& o:_outbound){
         mqttTraits m=o.second;

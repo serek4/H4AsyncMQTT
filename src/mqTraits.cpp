@@ -61,7 +61,7 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
     type=data[0];
     flags=(data[0] & 0xf);
 //  CALCULATE RL
-//  DO "HAMZA'S" FIX
+//  [ ] DO "HAMZA'S" FIX
     uint32_t multiplier = 1;
     uint8_t encodedByte;//,rl=0;
     uint8_t* pp=&data[1];
@@ -69,7 +69,14 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
         encodedByte = *pp++;
         offset++;
         remlen += (encodedByte & 0x7f) * multiplier;
-        multiplier *= 128;
+        multiplier <<= 7;// multiplier *= 128;
+        if (multiplier > 128*128*128)
+        {
+            H4AMC_PRINT1("MaMalformed Variable Byte Integer %d\n",remlen);
+            // remlen=0;
+            // Malformed packet....
+            // [ ] v3.1.1 #4.8 "If the Client or Server encounters a Transient Error while processing an inbound Control Packet it MUST close the Network Connection on which it received that Control Packet"
+        }
     } while ((encodedByte & 0x80) != 0);
     len=1+offset+remlen;
     H4AMC_PRINT4("PACKET SIZE=%d s=%d\n",len,s);

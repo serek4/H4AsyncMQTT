@@ -226,7 +226,7 @@ class H4AsyncMQTT {
                 void                _clearQQ(H4AMC_PACKET_MAP* m);
                 void                _connect();
                 void                _destroyClient();
-                void                _handlePacket(uint8_t* data, size_t len);
+                void                _handlePacket(uint8_t* data, size_t len, int n_handled=0);
                 void                _handlePublish(mqttTraits T);
         inline  void                _hpDespatch(mqttTraits T);
         inline  void                _hpDespatch(uint16_t id);
