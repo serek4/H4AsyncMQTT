@@ -65,6 +65,7 @@ void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout){ /// refakta?
         mbx::clear(data);
         m->erase(id);
     } else _notify(inout ? H4AMC_INBOUND_QOS_ACK_FAIL:H4AMC_OUTBOUND_QOS_ACK_FAIL,id); //H4AMC_PRINT("WHO TF IS %d???\n",id);
+    mbx::dump();
 }
 
 void H4AsyncMQTT::_cleanStart(){
@@ -145,7 +146,11 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
 //                Serial.printf("SAFEHEAP: %d\n",H4T_HEAP_SAFETY);
                 Serial.printf("H4AMC Vn: %s\n",H4AMC_VERSION);
                 Serial.printf("NRETRIES: %d\n",H4AMC_MAX_RETRIES);
+#if MQTT5
+                Serial.printf("start : %s\n",_cleanStart ? "clean":"dirty");
+#else
                 Serial.printf("session : %s\n",_cleanSession ? "clean":"dirty");
+#endif
                 Serial.printf("clientID: %s\n",_clientId.data());
                 Serial.printf("keepaliv: %d\n",_keepalive);
             }
@@ -174,9 +179,10 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
             if(i[1]) _notify(H4AMC_CONNECT_FAIL,i[1]);
             else {
                 _state=H4AMC_RUNNING;
-                bool session=i[0] & 0x01;
+                bool session=i[0] & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
+
                 _ACKoutbound(0); // ACK connect to clear it from POOL.
-                _resendPartialTxns();
+                _resendPartialTxns(/* Accept bool session */);
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
 #if H4AMC_DEBUG
                 SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
@@ -289,14 +295,18 @@ void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,
 //
 //      PUBLIC
 //
-void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId,bool session){
-    H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s,%d)\n",url,auth,pass,clientId,session);
+void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId,bool clean){
+    H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s,%d)\n",url,auth,pass,clientId,clean);
     if(_state==H4AMC_DISCONNECTED){
         _h4atClient=new H4AsyncClient;
         _url=url;
         _username = auth;
         _password = pass;
-        _cleanSession = session;
+#if MQTT5
+        _cleanStart = clean;
+#else
+        _cleanSession = clean;
+#endif
         _clientId = "" ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION);
         _connect();
         H4AsyncClient::_scavenge();
@@ -304,7 +314,12 @@ void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,cons
 }
 
 void H4AsyncMQTT::disconnect() {
-    static uint8_t  G[]={DISCONNECT,0};
+    static uint8_t G[] =
+#if MQTT5
+        {DISCONNECT, 0x4}; //Reason Code 0x04 (Disconnect with Will Message)
+#else
+        {DISCONNECT, 0};
+#endif
     H4AMC_PRINT1("USER DCX\n");
     if(_state==H4AMC_RUNNING) _h4atClient->TX(G,2,false);
     else _h4atClient->_cbError(ERR_CONN,H4AMC_USER_LOGIC_ERROR);

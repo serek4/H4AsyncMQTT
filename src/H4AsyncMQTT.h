@@ -98,6 +98,10 @@ enum :uint8_t {
     PINGREQ     = 0xc0, // x
     PINGRESP    = 0xd0, // x
     DISCONNECT  = 0xe0
+#if MQTT5
+    ,
+    AUTH        = 0xf0
+#endif
 };
 
 enum H4AMC_MQTT_CNX_FLAG : uint8_t {
@@ -107,7 +111,11 @@ enum H4AMC_MQTT_CNX_FLAG : uint8_t {
     WILL_QOS1     = 0x08,
     WILL_QOS2     = 0x10,
     WILL          = 0x04,
+#if MQTT5
+    CLEAN_START   = 0x02
+#else
     CLEAN_SESSION = 0x02
+#endif
 };
 class mqttTraits {             
                 std::string     _decodestring(uint8_t** p);
@@ -204,7 +212,11 @@ class H4AsyncMQTT {
                 H4AMC_cbError       _cbMQTTError=nullptr;
 
                 H4AMC_cbMessage     _cbMessage=nullptr;
+#ifdef MQTT5
+                bool                _cleanStart=true;
+#else // MQTT5
                 bool                _cleanSession=true;
+#endif // MQTT5
                 std::string         _clientId;
         static  H4_INT_MAP          _errorNames;
         static  H4AMC_PACKET_MAP    _inbound;
@@ -215,8 +227,8 @@ class H4AsyncMQTT {
                 std::string         _url;
                 std::string         _username;
                 std::string         _willPayload;
-                uint8_t             _willQos;
-                bool                _willRetain;
+                uint8_t             _willQos=0;
+                bool                _willRetain=false;
                 std::string         _willTopic;
                
                 void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND

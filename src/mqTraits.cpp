@@ -135,7 +135,11 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
                 uint8_t cf=data[9];
                 H4AMC_PRINT3("  Protocol: %s\n",data[8]==4 ? "3.1.1":stringFromInt(data[8],"0x%02x").data());
                 H4AMC_PRINT4("  Flags: 0x%02x\n",cf);
+#if MQTT5
+                H4AMC_PRINT3("  Session: %s\n",((cf & CLEAN_START) >> 1) ? "Clean":"Dirty");
+#else
                 H4AMC_PRINT3("  Session: %s\n",((cf & CLEAN_SESSION) >> 1) ? "Clean":"Dirty");
+#endif
                 H4AMC_PRINT3("  Keepalive: %d\n",_peek16(&data[10]));
                 uint8_t* sp=&data[12];
                 H4AMC_PRINT3("  ClientId: %p %s\n",sp,_decodestring(&sp).data());

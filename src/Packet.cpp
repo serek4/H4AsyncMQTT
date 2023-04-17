@@ -64,6 +64,7 @@ void Packet::_build(bool hold){
             tmp.clear();
             _blox.pop();
         }
+        // Properties ...  (_blox?)
         _end(snd_buf,virgin);
         if(!hold) {
 #if H4AMC_DEBUG
@@ -90,7 +91,7 @@ void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
     _begin=[=]{
         for(auto &t:topix){
             topics.push_back(t);
-            _bs+=(_controlcode==SUBSCRIBE ? 3:2)+strlen(t);
+            _bs+=(_controlcode==SUBSCRIBE ? 3:2)+strlen(t); // 3 because of subscription options/QoS (3.1.1).
         }
     };
     _middle=[=](uint8_t* p){
@@ -128,11 +129,17 @@ void Packet::_stringblock(const std::string& s){
 ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     _bs=10;
     _begin=[=]{
+#if MQTT5
+        if(_parent->_cleanStart) protocol[7]|=CLEAN_START;
+#else
         if(_parent->_cleanSession) protocol[7]|=CLEAN_SESSION;
-        if(_parent->_willRetain) protocol[7]|=WILL_RETAIN;
-        if(_parent->_willQos) protocol[7]|=(_parent->_willQos==1) ? WILL_QOS1:WILL_QOS2;
+#endif
         _stringblock(_parent->_clientId);
+        // clientID --> Will properties --> wil lTopic --> willPayload --> username --> password
         if(_parent->_willTopic.size()){
+            if(_parent->_willRetain) protocol[7]|=WILL_RETAIN;
+            if(_parent->_willQos) protocol[7]|=(_parent->_willQos==1) ? WILL_QOS1:WILL_QOS2;
+            // _stringblock(""_parent->_willProperties"");
             _stringblock(_parent->_willTopic);
             _stringblock(_parent->_willPayload);
             protocol[7]|=WILL;
@@ -162,7 +169,7 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool
 
         if(length < _parent->getMaxPayloadSize()){
             _begin=[this]{ 
-                _stringblock(_topic.c_str());
+                _stringblock(_topic);
                 _bs+=_length;
                 byte flags=_retain;
                 flags|=(_dup << 3);

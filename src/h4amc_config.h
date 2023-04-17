@@ -42,6 +42,14 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 
 #define H4AMC_DEBUG 0
 
+// #define H4AMC_VERSION       0x04 // 3.1.1
+#define H4AMC_VERSION       0x05 // 5.0
+
+#if H4AMC_VERSION == 0x05
+#define MQTT5 1
+#else
+#define MQTT5 0
+#endif
 #define H4AMC_HEADROOM        2000
 
 #define H4AMC_MAX_RETRIES        2
