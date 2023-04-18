@@ -105,7 +105,34 @@ enum :uint8_t {
 #endif
 };
 
+enum H4AMC_MQTT_CNX_FLAG : uint8_t {
+    USERNAME      = 0x80,
+    PASSWORD      = 0x40,
+    WILL_RETAIN   = 0x20,
+    WILL_QOS1     = 0x08,
+    WILL_QOS2     = 0x10,
+    WILL          = 0x04,
 #if MQTT5
+    CLEAN_START   = 0x02
+#else
+    CLEAN_SESSION = 0x02
+#endif
+};
+
+
+#if MQTT5
+using MQTT_PROP_STRPAIR = std::pair<std::string,std::string>;
+
+namespace H4AMC_Helpers {
+    uint8_t* poke16(uint8_t* p,uint16_t u);
+    uint16_t peek16(uint8_t* p);
+    uint8_t* encodestring(uint8_t* p,const std::string& s);
+    std::string decodestring(uint8_t** p);
+    uint8_t* encodeBinary(uint8_t* p, const std::vector<uint8_t>&);
+    std::vector<uint8_t> decodeBinary(uint8_t** p);
+    uint32_t decodeVariableByteInteger(uint8_t** p);
+}
+
 enum H4AMC_MQTT5_ReasonCode : uint8_t {
     REASON_SUCCESS                          = 0x00,
     REASON_NORMAL_DISCONNECTION             = 0x00,
@@ -161,62 +188,43 @@ enum H4AMC_MQTT5_ReasonCode : uint8_t {
 */
 enum H4AMC_MQTT5_Property : uint8_t {
     PROPERTY_INVALID                            = 0x00,
-    PROPERTY_PAYLOAD_FORMAT_INDICATOR           = 0x01,
-    PROPERTY_MESSAGE_EXPIRY_INTERVAL            = 0x02,
-    PROPERTY_CONTENT_TYPE                       = 0x03,
-    PROPERTY_RESPONSE_TOPIC                     = 0x08,
-    PROPERTY_CORRELATION_DATA                   = 0x09,
-    PROPERTY_SUBSCRIPTION_IDENTIFIER            = 0x0B,
-    PROPERTY_SESSION_EXPIRY_INTERVAL            = 0x11,
-    PROPERTY_ASSIGNED_CLIENT_IDENTIFIER         = 0x12,
-    PROPERTY_SERVER_KEEP_ALIVE                  = 0x13,
-    PROPERTY_AUTHENTICATION_METHOD              = 0x15,
-    PROPERTY_AUTHENTICATION_DATA                = 0x16,
-    PROPERTY_REQUEST_PROBLEM_INFORMATION        = 0x17,
-    PROPERTY_WILL_DELAY_INTERVAL                = 0x18,
-    PROPERTY_REQUEST_RESPONSE_INFORMATION       = 0x19,
-    PROPERTY_RESPONSE_INFORMATION               = 0x1A,
-    PROPERTY_SERVER_REFERENCE                   = 0x1C,
-    PROPERTY_REASON_STRING                      = 0x1F,
-    PROPERTY_RECEIVE_MAXIMUM                    = 0x21,
-    PROPERTY_TOPIC_ALIAS_MAXIMUM                = 0x22,
-    PROPERTY_TOPIC_ALIAS                        = 0x23,
-    PROPERTY_MAXIMUM_QOS                        = 0x24,
-    PROPERTY_RETAIN_AVAILABLE                   = 0x25,
-    PROPERTY_USER_PROPERTY                      = 0x26,
-    PROPERTY_MAXIMUM_PACKET_SIZE                = 0x27,
-    PROPERTY_WILDCARD_SUBSCRIPTION_AVAILABLE    = 0x28,
-    PROPERTY_SUBSCRIPTION_IDENTIFIER_AVAILABLE  = 0x29,
-    PROPERTY_SHARED_SUBSCRIPTION_AVAILABLE      = 0x2A
+    PROPERTY_PAYLOAD_FORMAT_INDICATOR           = 0x01,     // BYTE
+    PROPERTY_MESSAGE_EXPIRY_INTERVAL            = 0x02,     // 4 BYTE INT
+    PROPERTY_CONTENT_TYPE                       = 0x03,     // UTF-8 STRING
+    PROPERTY_RESPONSE_TOPIC                     = 0x08,     // UTF-8 STRING
+    PROPERTY_CORRELATION_DATA                   = 0x09,     // BINARY DATA
+    PROPERTY_SUBSCRIPTION_IDENTIFIER            = 0x0B,     // VAR BYTE INT
+    PROPERTY_SESSION_EXPIRY_INTERVAL            = 0x11,     // 4 BYTE INT
+    PROPERTY_ASSIGNED_CLIENT_IDENTIFIER         = 0x12,     // UTF-8 STRING
+    PROPERTY_SERVER_KEEP_ALIVE                  = 0x13,     // 2 BYTE INT
+    PROPERTY_AUTHENTICATION_METHOD              = 0x15,     // UTF-8 STRING
+    PROPERTY_AUTHENTICATION_DATA                = 0x16,     // BINARY DATA
+    PROPERTY_REQUEST_PROBLEM_INFORMATION        = 0x17,     // BYTE
+    PROPERTY_WILL_DELAY_INTERVAL                = 0x18,     // 4 BYTE INT
+    PROPERTY_REQUEST_RESPONSE_INFORMATION       = 0x19,     // BYTE
+    PROPERTY_RESPONSE_INFORMATION               = 0x1A,     // UTF-8 STRING
+    PROPERTY_SERVER_REFERENCE                   = 0x1C,     // UTF-8 STRING
+    PROPERTY_REASON_STRING                      = 0x1F,     // UTF-8 STRING
+    PROPERTY_RECEIVE_MAXIMUM                    = 0x21,     // 2 BYTE INT
+    PROPERTY_TOPIC_ALIAS_MAXIMUM                = 0x22,     // 2 BYTE INT
+    PROPERTY_TOPIC_ALIAS                        = 0x23,     // 2 BYTE INT
+    PROPERTY_MAXIMUM_QOS                        = 0x24,     // BYTE
+    PROPERTY_RETAIN_AVAILABLE                   = 0x25,     // BYTE
+    PROPERTY_USER_PROPERTY                      = 0x26,     // UTF-8 STRING PAIR
+    PROPERTY_MAXIMUM_PACKET_SIZE                = 0x27,     // 4 BYTE INT
+    PROPERTY_WILDCARD_SUBSCRIPTION_AVAILABLE    = 0x28,     // BYTE
+    PROPERTY_SUBSCRIPTION_IDENTIFIER_AVAILABLE  = 0x29,     // BYTE
+    PROPERTY_SHARED_SUBSCRIPTION_AVAILABLE      = 0x2A      // BYTE
 };
 
-#endif
-
-enum H4AMC_MQTT_CNX_FLAG : uint8_t {
-    USERNAME      = 0x80,
-    PASSWORD      = 0x40,
-    WILL_RETAIN   = 0x20,
-    WILL_QOS1     = 0x08,
-    WILL_QOS2     = 0x10,
-    WILL          = 0x04,
-#if MQTT5
-    CLEAN_START   = 0x02
-#else
-    CLEAN_SESSION = 0x02
-#endif
-};
-
-#if MQTT5
 struct Server_Options {
     uint16_t receive_max= UINT16_MAX;
     uint16_t topic_alias_max=0;
     uint32_t maximum_packet_size=UINT32_MAX;
-    bool retain_available=false;
-    // std::string assignedClientID;
+    bool retain_available=true;
     bool wildcard_subscription_available=true;
     bool subscriptions_identifiers_available=true;
     bool shared_subscription_available=true;
-    // uint16_t server_keep_alive = KEEP_ALIVE_INTERVAL; // shared keep_alive between the server and the client.
     uint8_t maximum_qos=2;
     std::string response_information;
 };
@@ -228,148 +236,103 @@ struct MQTT_Property {
     virtual uint8_t* serialize(uint8_t* data, T value) = 0;
     virtual uint8_t* serialize(uint8_t* data) = 0; // Serialize the id  here???
     virtual bool is_malformed() { return false; }
+    virtual void print() {}
     MQTT_Property(H4AMC_MQTT5_Property i):id(i){}
 };
 struct MQTT_Property_Numeric : public MQTT_Property<uint32_t> {
     uint32_t value=0;
+    void print() override;
+    uint8_t* parse (uint8_t* data) override;
+    uint8_t* serialize(uint8_t* data, uint32_t value) override;
+    uint8_t* serialize(uint8_t* data) override;
+
     MQTT_Property_Numeric(H4AMC_MQTT5_Property i):MQTT_Property(i){}
 };
 
+struct MQTT_Property_Numeric_1B : public MQTT_Property_Numeric {
+    uint8_t* parse (uint8_t* data) override;
+    uint8_t* serialize(uint8_t* data, uint32_t value) override;
+    uint8_t* serialize (uint8_t* data) override;
+    bool is_malformed() override { return value > 0xff; }
+    MQTT_Property_Numeric_1B(H4AMC_MQTT5_Property i):MQTT_Property_Numeric(i){}
+};
 struct MQTT_Property_Numeric_2B : public MQTT_Property_Numeric {
-    uint8_t* parse (uint8_t* data) override { // [ ] peek16
-        // value = (*(data + 1)) | (*data << 8);
-        value=(*data++)<<8;
-        value+=(*data++);
-        return data;
-    }
-    virtual uint8_t* serialize(uint8_t* data, uint32_t value) override {
-        MQTT_Property_Numeric::value = value;
-        return serialize(data);
-    }
-    uint8_t* serialize (uint8_t* data) override {
-        *data++=id;
-
-        *data++ = (value & 0xff00) >> 8;
-        *data++ = value & 0xff;
-        return data;
-    }
+    uint8_t* parse (uint8_t* data) override;
+    uint8_t* serialize(uint8_t* data, uint32_t value) override;
+    uint8_t* serialize (uint8_t* data) override;
     bool is_malformed() override { return value > 0xffff; }
     MQTT_Property_Numeric_2B(H4AMC_MQTT5_Property i):MQTT_Property_Numeric(i){}
 };
 
-struct MQTT_Property_Numeric_1B : public MQTT_Property_Numeric {
-    uint8_t* parse (uint8_t* data) override {
-        value=*data++;
-        return data;
-    }
-    uint8_t* serialize(uint8_t* data, uint32_t value) override {
-        MQTT_Property_Numeric::value = value;
-        return serialize(data);
-    }
-    uint8_t* serialize (uint8_t* data) override {
-        *data++=id;
-        *data++ = value & 0xff;
-        return data;
-    }
-    bool is_malformed() override { return value > 0xff; }
-    MQTT_Property_Numeric_1B(H4AMC_MQTT5_Property i):MQTT_Property_Numeric(i){}
-};
-struct MQTT_Property_Numeric_4B : public MQTT_Property_Numeric {
-    uint8_t* parse (uint8_t* data) override {
-        value=(*data++)<<24;
-        value+=(*data++)<<16;
-        value+=(*data++)<<8;
-        value+=(*data++);
-        return data;
-    }
-    uint8_t* serialize(uint8_t* data, uint32_t value) override {
-        MQTT_Property_Numeric::value = value;
-        return serialize(data);
-    }
-    uint8_t* serialize(uint8_t* data){
-        *data++=id;
-        *data++ = (value & 0xff000000) >> 24;
-        *data++ = (value & 0xff0000) >> 16;
-        *data++ = (value & 0xff00) >> 8;
-        *data++ = value & 0xff;
-        return data;
-    }
+/* struct MQTT_Property_Numeric_4B : public MQTT_Property_Numeric {
+    uint8_t* parse (uint8_t* data) override;
+    uint8_t* serialize(uint8_t* data, uint32_t value) override;
+    uint8_t* serialize(uint8_t* data) override;
     MQTT_Property_Numeric_4B(H4AMC_MQTT5_Property i):MQTT_Property_Numeric(i){}
-};
-
-/* struct MQTT_Property_Bool : public MQTT_Property_Numeric {
-    uint8_t* parse (uint8_t* data) override {
-        value=*data++;
-        return data;
-    }
-    uint8_t* serialize(uint8_t* data, uint32_t value) override {
-        MQTT_Property_Numeric::value = value;
-        return serialize(data);
-    }
-    uint8_t* serialize(uint8_t* data) override {
-        *data++=id;
-        *data++ = value & 0xff;
-        return data;
-    }
-    MQTT_Property_Bool(H4AMC_MQTT5_Property i):MQTT_Property_Numeric(i){}
 }; */
-
-struct MQTT_Property_Numeric_VBI : public MQTT_Property_Numeric {
+struct MQTT_Property_Numeric_VBI : public MQTT_Property_Numeric { // Variable Byte Integer
     bool malformed_packet;
-    uint8_t* parse (uint8_t* data) override {
-        uint32_t multiplier = 1;
-        uint8_t encodedByte;//,rl=0;
-        uint8_t* pp=&data[0];
-        do{
-            encodedByte = *pp++;
-            value += (encodedByte & 0x7f) * multiplier;
-            multiplier <<= 7;//** multiplier *= 128;
-            if (multiplier > 128*128*128) //** if (offset>3)
-            {
-                H4AMC_PRINT1("Malformed Packet!!, value=%d\n",value);
-                malformed_packet = true;
-                return data;
-            }
-        } while ((encodedByte & 0x80) != 0);
-        return pp;
-    }
-
-    uint8_t* serialize(uint8_t* data, uint32_t value) override {
-        if (value > 268,435,455UL) {
-            H4AMC_PRINT1("Malformed Packet!!, value=%d\n",value);
-            malformed_packet = true;
-            return data;
-        }
-        MQTT_Property_Numeric::value = value;
-        return serialize(data);
-    }
-    uint8_t* serialize(uint8_t* data) {
-        uint8_t encodedByte;
-        do {
-            encodedByte = value % 128;
-            value /= 128;
-            if (value > 0) {
-                encodedByte |= 0x80;
-            }
-            *data++ = encodedByte;
-        } while (value > 0);
-        return data;
-    }
+    int length;
+    uint8_t* parse (uint8_t* data) override;
+    uint8_t* serialize(uint8_t* data, uint32_t value) override;
+    uint8_t* serialize(uint8_t* data) override;
     bool is_malformed() override { return malformed_packet; }
     MQTT_Property_Numeric_VBI(H4AMC_MQTT5_Property i):MQTT_Property_Numeric(i){}
 };
+struct MQTT_Property_Bool : public MQTT_Property_Numeric_1B {
+    bool is_malformed() override { return value > 1; }
+    void print() override;
+    MQTT_Property_Bool(H4AMC_MQTT5_Property i):MQTT_Property_Numeric_1B(i){}
+};
 
 
+//** Perhaps this is better to use the shared memory???
+/* struct MQTT_Property_Binary : public MQTT_Property<std::pair<uint8_t*,uint32_t>> {
+    std::pair<uint8_t*,uint32_t> value;
+    uint8_t* parse (uint8_t* data) override{
+        value = H4AMC_Helpers::decodeBinary(&data);
+    }
+    uint8_t* serialize(uint8_t* data, std::pair<uint8_t*,uint32_t> value) override {
+        this->value = value;
+        return serialize(data);
+    }
+    uint8_t* serialize(uint8_t* data) override {
+        
+    }
+    void print() override;
+    MQTT_Property_Binary(H4AMC_MQTT5_Property i):MQTT_Property(i){}
+
+}; */
+struct MQTT_Property_Binary : public MQTT_Property<std::vector<uint8_t>> {
+    std::vector<uint8_t> value;
+    uint8_t* parse (uint8_t* data) override;
+    uint8_t* serialize(uint8_t* data, std::vector<uint8_t> value) override;
+    uint8_t* serialize(uint8_t* data) override;
+    void print() override;
+    MQTT_Property_Binary(H4AMC_MQTT5_Property i):MQTT_Property(i){}
+
+};
 struct MQTT_Property_String : public MQTT_Property<std::string> {
     std::string value;
-    MQTT_Property_String(H4AMC_MQTT5_Property i,std::string v):MQTT_Property(i){}
+    void print() override;
+    uint8_t* parse (uint8_t* data) override;
+    uint8_t* serialize(uint8_t* data, std::string value) override;
+    uint8_t* serialize(uint8_t* data) override;
+
+    MQTT_Property_String(H4AMC_MQTT5_Property i):MQTT_Property(i){}
 };
 
-struct MQTT_Property_StringPair : public MQTT_Property<std::pair<std::string, std::string>> {
-    std::pair<std::string,std::string> value;
-    MQTT_Property_StringPair(H4AMC_MQTT5_Property i):MQTT_Property(i){}
+struct MQTT_Property_StringPair : public MQTT_Property<MQTT_PROP_STRPAIR> {
+    MQTT_PROP_STRPAIR value;
+    uint8_t* parse (uint8_t* data) override;
+    uint8_t* serialize(uint8_t* data, MQTT_PROP_STRPAIR value) override;
+    uint8_t* serialize(uint8_t* data) override;
+
+    void print() override;
+    MQTT_Property_StringPair():MQTT_Property(PROPERTY_USER_PROPERTY){}
 };
 struct MQTT_Properties {
+    using USER_PROPERTIES_MAP = std::map<std::string,std::string>;
 //    uint8_t payload_format_indicator;
 //   uint32_t message_expiry_interval;
 //    std::string content_type;
@@ -399,10 +362,28 @@ struct MQTT_Properties {
 //    bool wildcard_subscription_available;
 //    bool subscription_identifiers_available;
 //    bool shared_subscription_available;
+    std::vector<std::unique_ptr<MQTT_Property_Numeric>> numeric_props;
+    std::vector<MQTT_Property_String> string_props;
+    std::vector<MQTT_Property_Binary> binary_props;
+    USER_PROPERTIES_MAP user_properties;
+    std::vector<H4AMC_MQTT5_Property> available_properties;
 
-    // std::vector<std::pair<uint8_t,std::string>> user_properties;
-    std::vector<std::pair<std::string,std::string>> user_properties;
-    std::vector<H4AMC_MQTT5_Property> available_props;
+    // For the user.
+    std::string operator[](const std::string& s) { return user_properties.count(s) ? user_properties[s] : std::string{}; }
+    USER_PROPERTIES_MAP getUserProperties() { return user_properties; }
+
+    bool isAvailable(H4AMC_MQTT5_Property p);
+    // Make a template for this??
+    static uint8_t* serializeProperty(H4AMC_MQTT5_Property p, uint8_t *data, uint32_t value);
+    static uint8_t* serializeProperty(H4AMC_MQTT5_Property p, uint8_t *data, std::string value);
+    static uint8_t* serializeProperty(H4AMC_MQTT5_Property p, uint8_t* data, std::vector<uint8_t> value);
+    static uint8_t* serializeUserProperty(uint8_t *data, MQTT_PROP_STRPAIR value);
+
+    std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*> parseProperties(uint8_t* data);
+
+    std::string getStringProperty(H4AMC_MQTT5_Property p);
+
+    uint32_t getNumericProperty(H4AMC_MQTT5_Property p);
 
 };
 

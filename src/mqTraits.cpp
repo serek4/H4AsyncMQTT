@@ -149,17 +149,13 @@ std::map<H4AMC_MQTT5_Property,char*> mqttTraits::propnames {
 #endif
 
 std::string mqttTraits::_decodestring(uint8_t** p){
-    size_t tlen=_peek16(*p);//payload+=2;
-    std::string rv((const char*) *(p)+2,tlen);
-    *p+=2+tlen;
-    return rv;
+    return H4AMC_Helpers::decodestring(p);
 }
 
 mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
     type=data[0];
     flags=(data[0] & 0xf);
 //  CALCULATE RL
-//  [ ] DO "HAMZA'S" FIX
     uint32_t multiplier = 1;
     uint8_t encodedByte;//,rl=0;
     uint8_t* pp=&data[1];
@@ -171,11 +167,8 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
         if (multiplier > 128*128*128) //** if (offset>3)
         {
             H4AMC_PRINT1("Malformed Packet!!, remlen=%d\n",remlen);
-            // remlen=0;
-            // Malformed packet....
-            // [ ] v3.1.1 #4.8 "If the Client or Server encounters a Transient Error while processing an inbound Control Packet it MUST close the Network Connection on which it received that Control Packet"
-            // [ ] v5.0 "When a Client detects a Malformed Packet or Protocol Error, and a Reason Code is given in the specification, it SHOULD close the Network Connection."
-
+            // v3.1.1 #4.8 "If the Client or Server encounters a Transient Error while processing an inbound Control Packet it MUST close the Network Connection on which it received that Control Packet"
+            // v5.0 "When a Client detects a Malformed Packet or Protocol Error, and a Reason Code is given in the specification, it SHOULD close the Network Connection."
             malformed_packet = true;
             return;
         }

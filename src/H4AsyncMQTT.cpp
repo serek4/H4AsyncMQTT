@@ -54,7 +54,58 @@ H4_INT_MAP H4AsyncMQTT::_errorNames={
     {H4AMC_USER_LOGIC_ERROR,"USER LOGIC ERROR"},
 #endif
 };
+#if MQTT5
+namespace H4AMC_Helpers {
+    uint8_t* poke16(uint8_t* p,uint16_t u){
+        *p++=(u & 0xff00) >> 8;
+        *p++=u & 0xff;
+        return p;
+    }
+    uint16_t peek16(uint8_t* p){ return (*(p+1))|(*p << 8); }
+    
+    uint8_t* encodestring(uint8_t* p,const std::string& s){
+        p=poke16(p,s.size());
+        memcpy(p,s.data(),s.size());
+        return p+s.size();
+    }
 
+    std::string decodestring(uint8_t** p){
+        size_t tlen=peek16(*p);//payload+=2;
+        std::string rv((const char*) *(p)+2,tlen);
+        *p+=2+tlen;
+        return rv;
+    }
+    uint8_t* encodeBinary(uint8_t* p, const std::vector<uint8_t>& data)
+    {
+        p=poke16(p,data.size());
+        std::copy_n(data.begin(), data.size(), p);
+        return p+data.size();
+    }
+    std::vector<uint8_t> decodeBinary(uint8_t** p)
+    {
+        uint16_t len=peek16(*p);
+        *p+=2;
+        std::vector<uint8_t> rv;
+        rv.reserve(len);
+        std::copy_n(*p, len, std::back_inserter(rv));
+        *p+=len;
+        return rv;
+    }
+    uint32_t decodeVariableByteInteger(uint8_t** p) {
+        uint32_t multiplier = 1;
+        uint32_t value = 0;
+        uint8_t encodedByte;
+        do {
+            encodedByte = *(*p)++;  // Ensure this is the right pointer dealing.
+            value += (encodedByte & 127) * multiplier;
+            multiplier *= 128;
+            if (multiplier > 128 * 128 * 128)
+                return UINT32_MAX; // Malformed
+        } while ((encodedByte & 128) != 0);
+        return value;
+    }
+}
+#endif
 H4AsyncMQTT::H4AsyncMQTT(){
 
 }

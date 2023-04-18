@@ -111,9 +111,7 @@ void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
 }
 
 uint8_t* Packet::_poke16(uint8_t* p,uint16_t u){
-    *p++=(u & 0xff00) >> 8;
-    *p++=u & 0xff;
-    return p;
+    return H4AMC_Helpers::poke16(p,u);
 }
 
 void Packet::_stringblock(const std::string& s){ 
