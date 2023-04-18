@@ -68,10 +68,10 @@ void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout){ /// refakta?
     mbx::dump();
 }
 
-void H4AsyncMQTT::_cleanStart(){
-    H4AMC_PRINT4("_cleanStart clrQQ inbound\n");
+void H4AsyncMQTT::_startClean(){
+    H4AMC_PRINT4("_startClean clrQQ inbound\n");
     _clearQQ(&_inbound);
-    H4AMC_PRINT4("_cleanStart clrQQ outbound\n");
+    H4AMC_PRINT4("_startClean clrQQ outbound\n");
     _clearQQ(&_outbound);
 }
 
@@ -166,21 +166,56 @@ void H4AsyncMQTT::_hpDespatch(uint16_t id){ _hpDespatch(_inbound[id]); }
 
 void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     H4AMC_DUMP4(data,len);
-    if(data[0]==PINGRESP || data[0]==UNSUBACK){ // [ ] _ACKoutbound of UNSUBACK packet?
+    if(data[0]==PINGRESP){ // [ ] _ACKoutbound of UNSUBACK packet?
         H4AMC_PRINT1("MQTT %s\n",mqttTraits::pktnames[data[0]]);
         return; // early bath
     }
     mqttTraits traits(data,len);
+    if(traits.malformed_packet)
+    {
+        H4AMC_PRINT1("Malformed packet! Stop processing\n");
+        // [ ] MAY Send a DISCONNECT packet to the server with a Reason Code of 0x81 (Malformed Packet)
+        // _disconnect(MALFORMED_PACKET);
+        // _destroyClient();
+
+        // At this process, discard the session state?
+        return;
+    }
     auto i=traits.start();
     uint16_t id=traits.id;
 
     switch (traits.type){
         case CONNACK:
-            if(i[1]) _notify(H4AMC_CONNECT_FAIL,i[1]);
+            if(i[1])
+            {
+#if MQTT5
+                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(i[1])]);
+                // [ ] Inform the user of the CONNACK packet Reason Code when a failure occurs.
+                // if (_cbProtocolEvent) _cbProtocolEvent(CONNECT_FAIL, static_cast<H4AMC_MQTT5_ReasonCode>(i[1]), traits.props);
+#else
+                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[i[1]]);
+#endif
+                
+
+                _notify(H4AMC_CONNECT_FAIL, i[1]);
+            }
             else {
+#if MQTT5
+                if (_serverOptions) 
+                    delete _serverOptions;
+                _serverOptions = traits.server_options;
+#if H4AMC_DEBUG
+                // for (auto& p : traits.properties) {
+                //     H4AMC_PRINT1("CONNACK %s=%s\n", mqttTraits::propnames[p.first], p.second.c_str());
+                // }
+#endif
+#endif
+                
                 _state=H4AMC_RUNNING;
                 bool session=i[0] & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
 
+                // [ ] Fill with server options 
+                // _serverOptions->maximum_packet_size;
                 _ACKoutbound(0); // ACK connect to clear it from POOL.
                 _resendPartialTxns(/* Accept bool session */);
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
@@ -196,6 +231,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
             break;
         case PUBACK:
         case PUBCOMP:
+        case UNSUBACK:
             _ACKoutbound(id);
             break;
         case PUBREC:
@@ -213,6 +249,20 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                 PubcompPacket pcp(this,id); // pubrel
             }
             break;
+#if MQTT5
+        case DISCONNECT: // Server disconnect.
+            
+            // fetch reason
+            // notify
+            // _destroyClient();
+            if (_cbMQTTDisconnect) 
+                _cbMQTTDisconnect(); // [ ] pass reason alongwith  any server redirection info (Properties)
+            break;
+        case AUTH:
+            //[ ]  Handle Auth request ...
+
+            break;
+#endif // MQTT5
        default:
             if(traits.isPublish()) _handlePublish(traits);
             else {

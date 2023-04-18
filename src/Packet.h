@@ -35,6 +35,10 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 using H4AMC_BLOCK_Q        = std::queue<mbx>;
 
 class Packet {
+#if MQTT5
+                H4AMC_FN_U8PTRU8 _properties=[](uint8_t* p){ return p; };
+                uint32_t         _propertyLength=0;
+#endif
     protected:
                 H4AsyncMQTT*     _parent;
                 uint16_t         _id=0; 
@@ -42,10 +46,9 @@ class Packet {
                 uint8_t          _controlcode;
                 H4AMC_BLOCK_Q    _blox;
                 uint32_t         _bs=0;
-                H4AMC_FN_VOID    _begin=[]{};   // begin to store properties?
-                H4AMC_FN_U8PTRU8 _middle=[](uint8_t* p){ return p; }; // middle to serialize properties? or at _build()?
-                H4AMC_FN_U8PTR   _end=[](uint8_t* p,uint8_t* base){}; // lose this?
-
+                H4AMC_FN_VOID    _begin=[]{};   //** Setup the packet traits
+                H4AMC_FN_U8PTRU8 _varHeader=[](uint8_t* p){ return p; };
+                H4AMC_FN_U8PTR   _protocolPayload=[](uint8_t* p,uint8_t* base){};
                 void	         _build(bool hold=false);
                 void             _idGarbage(uint16_t id);
                 void             _initId();
@@ -58,26 +61,26 @@ class Packet {
 
 class ConnectPacket: public Packet {
 
-            uint8_t  protocol[8]={0x0,0x4,'M','Q','T','T',H4AMC_VERSION,0};
+            uint8_t  protocol[8]={0x0,0x4,'M','Q','T','T',MQTT_VERSION,0};
     public:
         ConnectPacket(H4AsyncMQTT* p);
 };
 
 struct PubackPacket: public Packet {
     public:
-        PubackPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBACK) { _idGarbage(id); }
+        PubackPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBACK,true) { _idGarbage(id); /* Dismiss Properties? */ }
 };
 class PubrecPacket: public Packet {
     public:
-        PubrecPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREC) { _idGarbage(id); }
+        PubrecPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREC,true) { _idGarbage(id); }
 };
 class PubrelPacket: public Packet {
     public:
-        PubrelPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREL) { _idGarbage(id); }
+        PubrelPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREL,true) { _idGarbage(id); }
 };
 class PubcompPacket: public Packet {
     public:
-        PubcompPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBCOMP) { _idGarbage(id); }  
+        PubcompPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBCOMP,true) { _idGarbage(id); }  
 };
 class SubscribePacket: public Packet {
     public:

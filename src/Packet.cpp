@@ -52,20 +52,8 @@ void Packet::_build(bool hold){
     if(snd_buf){
         *snd_buf++=_controlcode;
         for(auto const& r:rl) *snd_buf++=r;
-        if(_hasId) snd_buf=_poke16(snd_buf,_id);
-        snd_buf=_middle(snd_buf);
-        while(!_blox.empty()){
-            mbx tmp=_blox.front();
-            uint16_t n=tmp.len;
-            uint8_t* p=tmp.data;
-            snd_buf=_poke16(snd_buf,n);
-            memcpy(snd_buf,p,n);
-            snd_buf+=n;
-            tmp.clear();
-            _blox.pop();
-        }
-        // Properties ...  (_blox?)
-        _end(snd_buf,virgin);
+        snd_buf=_varHeader(snd_buf);
+        _protocolPayload(snd_buf,virgin);
         if(!hold) {
 #if H4AMC_DEBUG
             if((_controlcode & 0xf0) != PUBLISH) mqttTraits traits(virgin,_bs);
@@ -93,18 +81,26 @@ void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
             topics.push_back(t);
             _bs+=(_controlcode==SUBSCRIBE ? 3:2)+strlen(t); // 3 because of subscription options/QoS (3.1.1).
         }
+        // [ ] Add the properties to the length (property length) + store them
     };
-    _middle=[=](uint8_t* p){
+    _varHeader = [=](uint8_t *p)
+    {
+        p = _poke16(p, _id);
+#if MQTT5
+        // Embed the properties:
+        // property length, then the properties
+#endif
+        return p;
+    };
+
+    _protocolPayload=[=](uint8_t* p,uint8_t* base){
         for(auto const& t:topics){
             size_t n=t.size();
             p=_poke16(p,n);
             memcpy(p,t.data(),n);
             p+=n;
-            if(_controlcode==SUBSCRIBE) *p++=qos;
+            if(_controlcode==SUBSCRIBE) *p++=qos;// [ ] TODO: Subscription options
         }
-        return p;
-    };
-    _end=[=](uint8_t* p,uint8_t* base){
         mqttTraits T(base,_bs);
         H4AsyncMQTT::_outbound[_id]=T;  // To be released on SUBACK
     };
@@ -152,12 +148,24 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
             _stringblock(_parent->_password);
             protocol[7]|=PASSWORD;
         }
+        // [ ] Add the properties to the length (property length) + store them
     };
-    _middle=[=](uint8_t* p){
+    _varHeader=[=](uint8_t* p){
         memcpy(p,&protocol,8);p+=8;
         return _poke16(p,_parent->_keepalive);
     };
-    _end=[=](uint8_t* p,uint8_t* base){
+    _protocolPayload=[=](uint8_t* p_pos,uint8_t* base){
+        // [ClientID] --> ((Will properties)) --> [willTopic --> willPayload --> username --> password]
+        while(!_blox.empty()){ // [ ] TODO: Will properties...
+            mbx tmp=_blox.front();
+            uint16_t n=tmp.len;
+            uint8_t* p=tmp.data;
+            p_pos=_poke16(p_pos,n);
+            memcpy(p_pos,p,n);
+            p_pos+=n;
+            tmp.clear();
+            _blox.pop();
+        }
         mqttTraits T(base,_bs);
         H4AsyncMQTT::_outbound[0]=T;  // To be released on CONNACK
     };
@@ -165,7 +173,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 }
 
 PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId):
-    _topic(topic),_qos(qos),_retain(retain),_length(length),_dup(dup),_givenId(givenId),Packet(p,PUBLISH) {
+    _topic(topic),_qos(qos),_retain(retain),_length(length),_dup(dup),_givenId(givenId),Packet(p,PUBLISH,_qos) {
 
         if(length < _parent->getMaxPayloadSize()){
             _begin=[this]{ 
@@ -177,21 +185,36 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool
                 if(_qos) {
                     _id=_givenId ? _givenId:(++_parent->_nextId);
                     flags|=(_qos << 1);
-                    _bs+=2; // because Packet id will be added
+                    // _bs+=2; // because Packet id will be added (Is done through the constructor by passing _qos to _hasId parameter)
+                    // _hasId = true;
                 }
                 _controlcode|=flags;
+            // [ ] Add the properties to the length (property length) + store them
+
+            };
+            _varHeader=[this](uint8_t* p_pos){ // To embed the Topic name.
+                mbx tmp=_blox.front();
+                uint16_t n=tmp.len;
+                uint8_t* p=tmp.data;
+                p_pos=_poke16(p_pos,n);
+                memcpy(p_pos,p,n);
+                p_pos+=n;
+                tmp.clear();
+                _blox.pop();
+                if(_hasId) p_pos=_poke16(p_pos,_id);
+                // Properties...
+                return p_pos;
             };
 
-            _end=[=](uint8_t* p,uint8_t* base){ 
-                uint8_t* p2=_qos ? _poke16(p,_id):p;
-                memcpy(p2,payload,_length);
+            _protocolPayload=[=](uint8_t* p,uint8_t* base){ 
+                memcpy(p,payload,_length);
                 mqttTraits T(base,_bs);
                 if(_givenId) H4AsyncMQTT::_inbound[_id]=T;
                 else if(_qos) H4AsyncMQTT::_outbound[_id]=T;
                 else
                     h4.once(10000U /* H4AT_WRITE_TIMEOUT */,[=](){mbx::clear(base);}); // Initial fix to QoS 0 memory leak.
             };
-            _build(_givenId);/* why to pass _givenId which is always 0??? */
+            _build(_givenId);
         } else {
             H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,_parent->getMaxPayloadSize());
             _parent->_notify(_givenId ? H4AMC_INBOUND_PUB_TOO_BIG:H4AMC_OUTBOUND_PUB_TOO_BIG,length);

@@ -42,14 +42,20 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 
 #define H4AMC_DEBUG 0
 
-// #define H4AMC_VERSION       0x04 // 3.1.1
-#define H4AMC_VERSION       0x05 // 5.0
+// #define MQTT_VERSION       0x04 // 3.1.1
+#define MQTT_VERSION       0x05 // 5.0
 
-#if H4AMC_VERSION == 0x05
+#if MQTT_VERSION == 0x05
 #define MQTT5 1
+#define MQTT5_MAX_PACKET_SIZE  5200
+#define MQTT_RECEIVE_MAXIMUM   25
+#define MQTT_TOPIC_ALIAS_MAX   25
+
 #else
 #define MQTT5 0
 #endif
-#define H4AMC_HEADROOM        2000
 
-#define H4AMC_MAX_RETRIES        2
+#define H4AMC_HEADROOM        2000
+#define KEEP_ALIVE_INTERVAL   (H4AS_SCAVENGE_FREQ - H4AMC_HEADROOM)
+
+#define H4AMC_MAX_RETRIES        2 // No need to specify this, as it should just retry publishes at successful CONNACK only???
