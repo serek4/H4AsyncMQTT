@@ -10,7 +10,7 @@ void MQTT_Property_Numeric::print()
 		H4AMC_PRINT2("Property [%s] [%u]\n", mqttTraits::propnames[id], value);
 }
 
-uint8_t* MQTT_Property_Numeric::parse (uint8_t* data){
+uint8_t* MQTT_Property_Numeric::parse(uint8_t* data){
 	value=(*data++)<<24;
 	value+=(*data++)<<16;
 	value+=(*data++)<<8;
@@ -98,10 +98,11 @@ uint8_t* MQTT_Property_Numeric_VBI::serialize(uint8_t* data, uint32_t value){
 		malformed_packet = true;
 		return data;
 	}
-	MQTT_Property_Numeric::value = value;
+	this->value = value;
 	return serialize(data);
 }
 uint8_t* MQTT_Property_Numeric_VBI::serialize(uint8_t* data){
+	*data++=id;
 	uint8_t encodedByte;
 	do {
 		encodedByte = value % 128;
@@ -122,6 +123,7 @@ uint8_t* MQTT_Property_Binary::serialize(uint8_t* data, std::vector<uint8_t> val
 	return serialize(data);
 }
 uint8_t* MQTT_Property_Binary::serialize(uint8_t* data){
+	*data++=id;
 	return H4AMC_Helpers::encodeBinary(data,value);
 }
 void MQTT_Property_Binary::print(){
@@ -139,6 +141,7 @@ uint8_t* MQTT_Property_String::serialize(uint8_t* data, std::string value){
 	return serialize(data);
 }
 uint8_t* MQTT_Property_String::serialize(uint8_t* data){
+	*data++	= id;
 	return H4AMC_Helpers::encodestring(data,value);
 }
 void MQTT_Property_String::print() { H4AMC_PRINT2("Property [%s] [%s]\n", mqttTraits::propnames[id], value.c_str()); }
@@ -153,6 +156,7 @@ uint8_t* MQTT_Property_StringPair::serialize(uint8_t* data, MQTT_PROP_STRPAIR va
 	return serialize(data);
 }
 uint8_t* MQTT_Property_StringPair::serialize(uint8_t* data){
+	*data++ = id;
 	data=H4AMC_Helpers::encodestring(data,value.first);
 	data=H4AMC_Helpers::encodestring(data,value.second);
 	return data;

@@ -84,7 +84,7 @@ enum H4AMC_FAILURE {
     H4AMC_ERROR_MAX
 };
 
-enum :uint8_t {
+enum PacketHeader :uint8_t {
     CONNECT     = 0x10, // x
     CONNACK     = 0x20, // x
     PUBLISH     = 0x30, // x
@@ -131,6 +131,8 @@ namespace H4AMC_Helpers {
     uint8_t* encodeBinary(uint8_t* p, const std::vector<uint8_t>&);
     std::vector<uint8_t> decodeBinary(uint8_t** p);
     uint32_t decodeVariableByteInteger(uint8_t** p);
+    uint8_t* encodeVariableByteInteger(uint8_t* p, uint32_t value);
+    uint8_t varBytesLength(uint32_t value);
 }
 
 enum H4AMC_MQTT5_ReasonCode : uint8_t {
@@ -217,16 +219,29 @@ enum H4AMC_MQTT5_Property : uint8_t {
     PROPERTY_SHARED_SUBSCRIPTION_AVAILABLE      = 0x2A      // BYTE
 };
 
+enum Subscription_Options {
+    SUBSCRIPTION_OPTION_QoS_SHIFT                     = 0,
+    SUBSCRIPTION_OPTION_NO_LOCAL_SHIFT                = 2,
+    SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED_SHIFT     = 3,
+    SUBSCRIPTION_OPTION_RETAIN_HANDLING_SHIFT         = 4
+};
 struct Server_Options {
-    uint16_t receive_max= UINT16_MAX;
+    // uint32_t session_expiry_interval=MQTT_CONNECT_SESSION_EXPRITY_INTERVAL; // Until being supported in the library.
+    uint16_t receive_max= MQTT_CONNECT_RECEIVE_MAXIMUM;
     uint16_t topic_alias_max=0;
-    uint32_t maximum_packet_size=UINT32_MAX;
+    uint32_t maximum_packet_size= MQTT_CONNECT_MAX_PACKET_SIZE;
     bool retain_available=true;
     bool wildcard_subscription_available=true;
     bool subscriptions_identifiers_available=true;
     bool shared_subscription_available=true;
     uint8_t maximum_qos=2;
     std::string response_information;
+
+    uint8_t subId = 0; // Maximum 127.. because of the 7 bit encoding, as VBI.
+    std::map<uint16_t, std::string> rec_topic_alias;
+    std::map<std::string, uint16_t> pub_topic_alias;
+    std::map<uint16_t, std::vector<std::string>> subId2topic;
+
 };
 
 template<typename T>
@@ -234,7 +249,7 @@ struct MQTT_Property {
     H4AMC_MQTT5_Property id;
     virtual uint8_t* parse (uint8_t* data) = 0;
     virtual uint8_t* serialize(uint8_t* data, T value) = 0;
-    virtual uint8_t* serialize(uint8_t* data) = 0; // Serialize the id  here???
+    virtual uint8_t* serialize(uint8_t* data) = 0; // Serializes the ID.
     virtual bool is_malformed() { return false; }
     virtual void print() {}
     MQTT_Property(H4AMC_MQTT5_Property i):id(i){}
@@ -286,7 +301,7 @@ struct MQTT_Property_Bool : public MQTT_Property_Numeric_1B {
 };
 
 
-//** Perhaps this is better to use the shared memory???
+//** Perhaps this is better to use the shared memory??? (Or contiguous memory)
 /* struct MQTT_Property_Binary : public MQTT_Property<std::pair<uint8_t*,uint32_t>> {
     std::pair<uint8_t*,uint32_t> value;
     uint8_t* parse (uint8_t* data) override{
@@ -331,9 +346,9 @@ struct MQTT_Property_StringPair : public MQTT_Property<MQTT_PROP_STRPAIR> {
     void print() override;
     MQTT_Property_StringPair():MQTT_Property(PROPERTY_USER_PROPERTY){}
 };
+using USER_PROPERTIES_MAP = std::map<std::string,std::string>;
 struct MQTT_Properties {
-    using USER_PROPERTIES_MAP = std::map<std::string,std::string>;
-//    uint8_t payload_format_indicator;
+/* //    uint8_t payload_format_indicator;
 //   uint32_t message_expiry_interval;
 //    std::string content_type;
 //    std::string response_topic;
@@ -361,7 +376,7 @@ struct MQTT_Properties {
 //    uint32_t maximum_packet_size;
 //    bool wildcard_subscription_available;
 //    bool subscription_identifiers_available;
-//    bool shared_subscription_available;
+//    bool shared_subscription_available; */
     std::vector<std::unique_ptr<MQTT_Property_Numeric>> numeric_props;
     std::vector<MQTT_Property_String> string_props;
     std::vector<MQTT_Property_Binary> binary_props;
@@ -387,6 +402,20 @@ struct MQTT_Properties {
 
 };
 
+struct MQTT5MessageProperties {
+    uint8_t payload_format_indicator;
+    uint32_t message_expiry_interval;
+    std::string content_type;
+    std::string response_topic;
+    std::vector<uint8_t> correlation_data;
+    std::map<std::string,std::string> user_properties;
+};
+struct MQTT5WillProperties : public MQTT5MessageProperties {
+    uint32_t will_delay_interval;
+};
+struct MQTT5PublishProperties : public MQTT5MessageProperties {
+    uint16_t topic_alias;
+};
 #endif
 
 class mqttTraits {             
@@ -414,7 +443,6 @@ class mqttTraits {
                 bool            malformed_packet=false;
 
 #if MQTT5
-                Server_Options*  server_options = nullptr;
                 MQTT_Properties*  properties = nullptr;                
 #endif
                 
@@ -447,6 +475,7 @@ using H4AMC_FN_U8PTRU8     = std::function<uint8_t*(uint8_t*)>;
 using H4AMC_PACKET_MAP      =std::map<uint16_t,mqttTraits>; // indexed by messageId
 using H4AMC_cbError         =std::function<void(int, int)>;
 using H4AMC_cbMessage       =std::function<void(const char* topic, const uint8_t* payload, size_t len,uint8_t qos,bool retain,bool dup)>;
+using H4AMC_cbProperties    =std::function<void(USER_PROPERTIES_MAP)>; // in MQTT5
 using H4AMC_MEM_POOL        =std::unordered_set<uint8_t*>;
 
 class Packet;
@@ -490,7 +519,11 @@ class H4AsyncMQTT {
         friend class PublishPacket;
         friend class mqttTraits;
                 uint32_t            _state=H4AMC_DISCONNECTED;
+#if MQTT5
+                H4AMC_cbProperties  _cbMQTTConnect=nullptr;
+#else
                 H4_FN_VOID          _cbMQTTConnect=nullptr;
+#endif
                 H4_FN_VOID          _cbMQTTDisconnect=nullptr;
                 H4AMC_cbError       _cbMQTTError=nullptr;
 
@@ -498,6 +531,9 @@ class H4AsyncMQTT {
 #ifdef MQTT5
                 bool                _cleanStart=true;
                 Server_Options*     _serverOptions=nullptr;
+                std::map<PacketHeader, std::vector<std::shared_ptr<std::pair<std::string, std::string>>>> _user_props;                
+
+
 #else // MQTT5
                 bool                _cleanSession=true;
 #endif // MQTT5
@@ -510,6 +546,9 @@ class H4AsyncMQTT {
                 std::string         _password;
                 std::string         _url;
                 std::string         _username;
+#if MQTT5
+                MQTT5WillProperties _willProperties;
+#endif
                 std::string         _willPayload;
                 uint8_t             _willQos=0;
                 bool                _willRetain=false;
@@ -537,31 +576,35 @@ class H4AsyncMQTT {
         static  std::string         errorstring(int e);
                 std::string         getClientId(){ return _clientId; }
                 size_t inline       getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - H4T_HEAP_SAFETY) / 2 ; }
+#if MQTT5
+                void                onConnect(H4AMC_cbProperties callback){ _cbMQTTConnect=callback; }
+#else
                 void                onConnect(H4_FN_VOID callback){ _cbMQTTConnect=callback; }
+#endif
                 void                onDisconnect(H4_FN_VOID callback){ _cbMQTTDisconnect=callback; }
                 void                onError(H4AMC_cbError callback){ _cbMQTTError=callback; }
                 void                onMessage(H4AMC_cbMessage callback){ _cbMessage=callback; }
-                void                publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0,  bool retain=false);
-                void                publish(const char* topic,const char* payload, size_t length, uint8_t qos=0,  bool retain=false);
+                void                publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0,  bool retain=false MQTTPUBLISHPROPERTIES_API_H);
+                void                publish(const char* topic,const char* payload, size_t length, uint8_t qos=0,  bool retain=false MQTTPUBLISHPROPERTIES_API_H);
                 template<typename T>
-                void publish(const char* topic,T v,const char* fmt="%d",uint8_t qos=0,bool retain=false){
+                void publish(const char* topic,T v,const char* fmt="%d",uint8_t qos=0,bool retain=false MQTTPUBLISHPROPERTIES_API_H){
                     char buf[16];
                     sprintf(buf,fmt,v);
                     publish(topic, reinterpret_cast<const uint8_t*>(buf), strlen(buf), qos, retain);
                 }
 //              Coalesce templates when C++17 available (if constexpr (x))
-                void xPublish(const char* topic,const char* value, uint8_t qos=0,  bool retain=false) {
-                    publish(topic,reinterpret_cast<const uint8_t*>(value),strlen(value),qos,retain);
+                void xPublish(const char* topic,const char* value, uint8_t qos=0,  bool retain=false MQTTPUBLISHPROPERTIES_API_H) {
+                    publish(topic,reinterpret_cast<const uint8_t*>(value),strlen(value),qos,retain MQTTPUBLISHPROPERTIES_CALL);
                 }
-                void xPublish(const char* topic,String value, uint8_t qos=0,  bool retain=false) {
-                    publish(topic,reinterpret_cast<const uint8_t*>(value.c_str()),value.length(),qos,retain);
+                void xPublish(const char* topic,String value, uint8_t qos=0,  bool retain=false MQTTPUBLISHPROPERTIES_API_H) {
+                    publish(topic,reinterpret_cast<const uint8_t*>(value.c_str()),value.length(),qos,retain MQTTPUBLISHPROPERTIES_CALL);
                 }
-                void xPublish(const char* topic,std::string value, uint8_t qos=0,  bool retain=false) {
-                    publish(topic,reinterpret_cast<const uint8_t*>(value.c_str()),value.size(),qos,retain);
+                void xPublish(const char* topic,std::string value, uint8_t qos=0,  bool retain=false MQTTPUBLISHPROPERTIES_API_H) {
+                    publish(topic,reinterpret_cast<const uint8_t*>(value.c_str()),value.size(),qos,retain MQTTPUBLISHPROPERTIES_CALL);
                 }
                 template<typename T>
-                void xPublish(const char* topic,T value, uint8_t qos=0,  bool retain=false) {
-                    publish(topic,reinterpret_cast<uint8_t*>(&value),sizeof(T),qos,retain);
+                void xPublish(const char* topic,T value, uint8_t qos=0,  bool retain=false MQTTPUBLISHPROPERTIES_API_H) {
+                    publish(topic,reinterpret_cast<uint8_t*>(&value),sizeof(T),qos,retain MQTTPUBLISHPROPERTIES_CALL);
                 }
                 void xPayload(const uint8_t* payload,size_t len,char*& cp) {
                     char* p=reinterpret_cast<char*>(malloc(len+1));
@@ -592,6 +635,24 @@ class H4AsyncMQTT {
                 void               subscribe(std::initializer_list<const char*> topix, uint8_t qos=0);
                 void               unsubscribe(const char* topic);
                 void               unsubscribe(std::initializer_list<const char*> topix);
+#if MQTT5
+                // Valid for CONNECT, PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT, AUTH
+                bool addUserProp(PacketHeader header, std::string key, std::string value, bool checked=false){
+                    if (!checked && (header == CONNACK || header == SUBACK || header == UNSUBACK))
+                        return false;
+                    _user_props[header].push_back(std::make_shared<std::pair<std::string, std::string>>(key, value));
+                    // _user_props[header] = std::make_shared<std::pair<std::string, std::string>>(key, value);
+                }
+                bool addUserProp(std::initializer_list<PacketHeader> headers, std::string key, std::string value){
+                    for (auto header : headers)
+                        if (header == CONNACK || header == SUBACK || header == UNSUBACK)
+                            return false;
+                    for(auto header : headers)
+                        addUserProp(header, key, value, true);
+                    return true;
+                }
+                void resetUserProps() { _user_props.clear(); }
+#endif
 //
 //              DO NOT CALL ANY FUNCTION STARTING WITH UNDERSCORE!!! _
 //

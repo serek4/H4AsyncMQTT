@@ -77,19 +77,48 @@ void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
     static std::vector<std::string> topics;
     _id=++_parent->_nextId;
     _begin=[=]{
+#if MQTT5
+    auto& svrOpts = _parent->_serverOptions;
+    bool use_subId = svrOpts->subscriptions_identifiers_available && _controlcode == SUBSCRIBE;
+        if (use_subId) {
+            ++svrOpts->subId;
+            _propertyLength += 2; // One for the Property ID, one for the length of the value.
+        }
+#endif // MQTT5
+
         for(auto &t:topix){
+#if MQTT5
+            if (use_subId){
+                auto& subIdMap = svrOpts->subId2topic;
+                subIdMap[svrOpts->subId].push_back(t);
+            }
+#endif
             topics.push_back(t);
             _bs+=(_controlcode==SUBSCRIBE ? 3:2)+strlen(t); // 3 because of subscription options/QoS (3.1.1).
         }
+#if MQTT5
         // [ ] Add the properties to the length (property length) + store them
+        _fetchUserProperties();
+
+        _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
+
+        _properties = [=](uint8_t* p){
+            // [x] Manage Subscription Identifier.
+            p = H4AMC_Helpers::encodeVariableByteInteger(p, _propertyLength);
+            if (use_subId)
+                MQTT_Properties::serializeProperty(PROPERTY_SUBSCRIPTION_IDENTIFIER, p, svrOpts->subId);
+            // [x] User property at SUBSCRIBE...
+            p = _embedUserProperties(p);
+            return p;
+        };
+#endif
     };
     _varHeader = [=](uint8_t *p)
     {
         p = _poke16(p, _id);
 #if MQTT5
-        // Embed the properties:
-        // property length, then the properties
-#endif
+        p = _properties(p);
+#endif // MQTT5
         return p;
     };
 
@@ -99,7 +128,14 @@ void Packet::_multiTopic(std::initializer_list<const char*> topix,uint8_t qos){
             p=_poke16(p,n);
             memcpy(p,t.data(),n);
             p+=n;
-            if(_controlcode==SUBSCRIBE) *p++=qos;// [ ] TODO: Subscription options
+            if(_controlcode==SUBSCRIBE) *p=qos;
+#if MQTT5
+            // [x] TODO: Add Subscription options
+            *p |= MQTT_SUBSCTIPTION_OPTION_NO_LOCAL << SUBSCRIPTION_OPTION_NO_LOCAL_SHIFT;
+            *p |= MQTT_SUBSCTIPTION_OPTION_RETAIN_AS_PUBLISHED << SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED_SHIFT;
+            *p |= MQTT_SUBSCTIPTION_OPTION_RETAIN_HANDLING << SUBSCRIPTION_OPTION_RETAIN_HANDLING_SHIFT;
+#endif
+            *p++;
         }
         mqttTraits T(base,_bs);
         H4AsyncMQTT::_outbound[_id]=T;  // To be released on SUBACK
@@ -122,6 +158,7 @@ void Packet::_stringblock(const std::string& s){
 
 ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     _bs=10;
+
     _begin=[=]{
 #if MQTT5
         if(_parent->_cleanStart) protocol[7]|=CLEAN_START;
@@ -146,11 +183,50 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
             _stringblock(_parent->_password);
             protocol[7]|=PASSWORD;
         }
+#if MQTT5
         // [ ] Add the properties to the length (property length) + store them
+
+        // **Session Expiry Interval wont be used. 0 is the default value**
+        _propertyLength += 3; // RECEIVE_MAXIMUM ID + 2 bytes
+        _propertyLength += 5; // MAX PACKET SIZE ID + 4 bytes
+        _propertyLength += 3; // TOPIC ALIAS MAXIMUM ID + 2 bytes
+#if MQTT_CONNECT_REQUEST_PROBLEM_INFORMATION
+        _propertyLength += 2; // REQUEST PROBLEM INFORMATION ID + 1 byte
+#endif
+#if MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION
+        _propertyLength += 2; // REQUEST RESPONSE INFORMATION ID + 1 byte
+#endif
+        // [ ] _propertyLength += AUTH.method.length() + AUTH.data.length() + 2
+
+        _fetchUserProperties(); // CALL ONLY ONCE per Packet::Packet()
+        _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
+
+        _properties=[=](uint8_t* p){
+            p = H4AMC_Helpers::encodeVariableByteInteger(p, _propertyLength);
+            p = MQTT_Properties::serializeProperty(PROPERTY_RECEIVE_MAXIMUM, p, MQTT_CONNECT_RECEIVE_MAXIMUM);
+            p = MQTT_Properties::serializeProperty(PROPERTY_MAXIMUM_PACKET_SIZE, p, MQTT_CONNECT_MAX_PACKET_SIZE);
+            p = MQTT_Properties::serializeProperty(PROPERTY_TOPIC_ALIAS_MAXIMUM, p, MQTT_CONNECT_TOPIC_ALIAS_MAX);
+#if MQTT_CONNECT_REQUEST_PROBLEM_INFORMATION
+            p = MQTT_Properties::serializeProperty(PROPERTY_REQUEST_PROBLEM_INFORMATION, p, MQTT_CONNECT_REQUEST_PROBLEM_INFORMATION);
+#endif
+#if MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION
+            p = MQTT_Properties::serializeProperty(PROPERTY_REQUEST_RESPONSE_INFORMATION, p, MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION);
+#endif
+            p = _embedUserProperties(p);
+            // [ ] p = MQTT_Properties::serializeProperty(PROPERTY_AUTHENTICATION_METHOD, p, AUTH.method);
+            // [ ] p = MQTT_Properties::serializeProperty(PROPERTY_AUTHENTICATION_DATA, p, AUTH.data);
+            return p;
+        };
+
+#endif // MQTT5
     };
     _varHeader=[=](uint8_t* p){
         memcpy(p,&protocol,8);p+=8;
-        return _poke16(p,_parent->_keepalive);
+        _poke16(p,_parent->_keepalive);
+#if MQTT5
+        p=_properties(p);
+#endif
+        return p;
     };
     _protocolPayload=[=](uint8_t* p_pos,uint8_t* base){
         // [ClientID] --> ((Will properties)) --> [willTopic --> willPayload --> username --> password]
@@ -170,7 +246,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     _build();
 }
 
-PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId):
+PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId MQTTPUBLISHPROPERTIES_API):
     _topic(topic),_qos(qos),_retain(retain),_length(length),_dup(dup),_givenId(givenId),Packet(p,PUBLISH,_qos) {
 
         if(length < _parent->getMaxPayloadSize()){

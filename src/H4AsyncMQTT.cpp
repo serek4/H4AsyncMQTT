@@ -104,6 +104,26 @@ namespace H4AMC_Helpers {
         } while ((encodedByte & 128) != 0);
         return value;
     }
+    uint8_t* encodeVariableByteInteger(uint8_t* p, uint32_t value) {
+        do {
+            uint8_t encodedByte = value % 128;
+            value /= 128;
+            // if there are more data to encode, set the top bit of this byte
+            if (value > 0)
+                encodedByte |= 128;
+            *p++=encodedByte;
+        } while (value > 0);
+        return p;
+    }
+    uint8_t varBytesLength(uint32_t value){
+        if (value > 268435455) return 0; // Error. 4 bytes max
+        uint8_t len=1;
+        while(value>127){
+            value>>=7;
+            len++;
+        }
+        return len;
+    }
 }
 #endif
 H4AsyncMQTT::H4AsyncMQTT(){
@@ -140,7 +160,7 @@ void H4AsyncMQTT::_connect(){
         _h4atClient->nagle(true);
         h4.cancelSingleton(H4AMC_RCX_ID);
         H4AMC_PRINT1("KA = %d\n",_keepalive - H4AMC_HEADROOM);
-        h4.every(_keepalive - H4AMC_HEADROOM,[=]{
+        h4.every(_keepalive - H4AMC_HEADROOM,[=]{ // [ ] Change rate if _keepalive changes on CONNACK.
             if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
                 H4AMC_PRINT1("MQTT PINGREQ\n");
                 _h4atClient->TX(PING,2,false); /// optimise
@@ -235,46 +255,139 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     auto i=traits.start();
     uint16_t id=traits.id;
 
-    switch (traits.type){
-        case CONNACK:
-            if(i[1])
-            {
+    switch (traits.type)
+    {
+    case CONNACK:
+    {
 #if MQTT5
-                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(i[1])]);
-                // [ ] Inform the user of the CONNACK packet Reason Code when a failure occurs.
-                // if (_cbProtocolEvent) _cbProtocolEvent(CONNECT_FAIL, static_cast<H4AMC_MQTT5_ReasonCode>(i[1]), traits.props);
-#else
-                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[i[1]]);
-#endif
-                
-
-                _notify(H4AMC_CONNECT_FAIL, i[1]);
+        USER_PROPERTIES_MAP user_properties;
+        MQTT_Properties props;
+        if (i[2])
+        { // Always represent the CONNACK length.
+            auto [rc, ptr] = props.parseProperties(&i[2]);
+            if (rc)
+            {
+                H4AMC_PRINT1("CONNACK: Malformed Properties! Stop processing\n");
+                // [ ] send DISCONNECT packet with Reason Code rc
+                // [ ] disconnect(rc);
             }
-            else {
+        }
+#endif
+
+        switch (i[1])
+        {
+            case 0x00:
+            {
+                user_properties = props.getUserProperties();
 #if MQTT5
                 if (_serverOptions) 
                     delete _serverOptions;
-                _serverOptions = traits.server_options;
-#if H4AMC_DEBUG
-                // for (auto& p : traits.properties) {
-                //     H4AMC_PRINT1("CONNACK %s=%s\n", mqttTraits::propnames[p.first], p.second.c_str());
-                // }
-#endif
+                _serverOptions = new Server_Options;
+                for (auto &p : props.available_properties)
+                {
+                    switch (p)
+                    {
+                    // case PROPERTY_SESSION_EXPIRY_INTERVAL:
+                    //     _serverOptions->session_expiry_interval = props.getNumericProperty(p);
+                    //     break;
+                    case PROPERTY_RECEIVE_MAXIMUM:
+                        _serverOptions->receive_max = props.getNumericProperty(p);
+                        break;
+                    case PROPERTY_MAXIMUM_QOS:
+                        _serverOptions->maximum_qos = props.getNumericProperty(p);
+                        break;
+                    case PROPERTY_RETAIN_AVAILABLE:
+                        _serverOptions->retain_available = props.getNumericProperty(p);
+                        break;
+                    case PROPERTY_MAXIMUM_PACKET_SIZE:
+                        _serverOptions->maximum_packet_size = props.getNumericProperty(p);
+                        break;
+                    case PROPERTY_ASSIGNED_CLIENT_IDENTIFIER:
+                        H4AMC_PRINT1("Assigned ClientID=%s\n", props.getStringProperty(p).c_str());
+                        break;
+                    case PROPERTY_TOPIC_ALIAS_MAXIMUM:
+                        _serverOptions->topic_alias_max = props.getNumericProperty(p);
+                        break;
+                    case PROPERTY_REASON_STRING:
+                        H4AMC_PRINT1("Reason String=%s\n", props.getStringProperty(p).c_str());
+                        break;
+                    case PROPERTY_WILDCARD_SUBSCRIPTION_AVAILABLE:
+                        _serverOptions->wildcard_subscription_available = props.getNumericProperty(p);
+                        break;
+                    case PROPERTY_SUBSCRIPTION_IDENTIFIER_AVAILABLE:
+                        _serverOptions->subscriptions_identifiers_available = props.getNumericProperty(p);
+                        break;
+                    case PROPERTY_SHARED_SUBSCRIPTION_AVAILABLE:
+                        _serverOptions->shared_subscription_available = props.getNumericProperty(p);
+                        break;
+                    case PROPERTY_SERVER_KEEP_ALIVE:
+                    {
+                        auto v = props.getNumericProperty(p);
+                        if (v < _keepalive)
+                        {
+                            _keepalive = v;
+                            // [] ] Change the PINGREQ timer to the new value.
+                        }
+                        break;
+                    }
+                    break;
+                    case PROPERTY_RESPONSE_INFORMATION:
+                        _serverOptions->response_information = props.getStringProperty(p);
+                        break;
+                        // [ ] Handle Authentication Method and Data...
+/*                     case PROPERTY_AUTHENTICATION_METHOD:
+                        _serverOptions->authentication_method = props.getStringProperty(p);
+                        break;
+                    case PROPERTY_AUTHENTICATION_DATA:
+                        _serverOptions->authentication_data = props.getStringProperty(p);
+                        break; */
+                    default:
+                        break;
+                    }
+                }
+
+            // printProperties?
 #endif
                 
                 _state=H4AMC_RUNNING;
                 bool session=i[0] & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
 
-                // [ ] Fill with server options 
-                // _serverOptions->maximum_packet_size;
                 _ACKoutbound(0); // ACK connect to clear it from POOL.
                 _resendPartialTxns(/* Accept bool session */);
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
 #if H4AMC_DEBUG
                 SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
 #endif
-                if(_cbMQTTConnect) _cbMQTTConnect();
+                if(_cbMQTTConnect) _cbMQTTConnect(user_properties);
             }
+            break;
+#if MQTT5
+            case REASON_SERVER_MOVED:
+            case REASON_USE_ANOTHER_SERVER:
+            if (props.isAvailable(PROPERTY_SERVER_REFERENCE))
+            {
+                H4AMC_PRINT1("CONNACK: Server Reference=%s\n", props.getStringProperty(PROPERTY_SERVER_REFERENCE).c_str());
+                // [ ] MAY attempt to connect to the server referenced in the Server Reference property.
+            }
+            else
+            {
+                H4AMC_PRINT1("CONNACK: Server Reference not available\n");
+            }
+            break;
+            default:
+                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(i[1])]);
+                // [ ] Inform the user of the CONNACK packet Reason Code when a failure occurs.
+                // if (_cbProtocolEvent) _cbProtocolEvent(CONNECT_FAIL, static_cast<H4AMC_MQTT5_ReasonCode>(i[1]), traits.props);
+                
+#else
+            default: 
+                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[i[1]]);
+#endif
+                _notify(H4AMC_CONNECT_FAIL, i[1]);
+            break;
+        }
+
+    }
             break;
         case SUBACK:
             if(i[2] & 0x80) _notify(H4AMC_SUBSCRIBE_FAIL,id);
@@ -321,16 +434,19 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                 H4AMC_DUMP3(data,len);
             }
             break;
-    }
-    if(traits.next.second){
-        H4AMC_PRINT4("Let's go round again! %p %d\n",traits.next.first,traits.next.second);
-        if (n_handled < 10)
-            _handlePacket(traits.next.first,traits.next.second, n_handled + 1);
-        else {  // Relay off to another call tree to avoid memory exhaustion / stack overflow / watchdog reset
-            H4AMC_PRINT4("Too many packets to handle, saving stack to another call tree\n");
-            h4.queueFunction([=]() { _handlePacket(traits.next.first,traits.next.second, 0); });
-        }
-    }
+       }
+            if (traits.next.second)
+            {
+                H4AMC_PRINT4("Let's go round again! %p %d\n", traits.next.first, traits.next.second);
+                if (n_handled < 10)
+                    _handlePacket(traits.next.first, traits.next.second, n_handled + 1);
+                else
+                { // Relay off to another call tree to avoid memory exhaustion / stack overflow / watchdog reset
+                    H4AMC_PRINT4("Too many packets to handle, saving stack to another call tree\n");
+                    h4.queueFunction([=]()
+                                     { _handlePacket(traits.next.first, traits.next.second, 0); });
+                }
+            }
 }
 
 void H4AsyncMQTT::_handlePublish(mqttTraits P){
@@ -435,10 +551,10 @@ std::string H4AsyncMQTT::errorstring(int e){
     #endif
 }
 
-void H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, bool retain) { _runGuard([=]{ PublishPacket pub(this,topic,qos,retain,payload,length,0,0); }); }
+void H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, bool retain MQTTPUBLISHPROPERTIES_API) { _runGuard([=]{ PublishPacket pub(this,topic,qos,retain,payload,length,0,0 MQTTPUBLISHPROPERTIES_CALL); }); }
 
-void H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, bool retain) { 
-    _runGuard([=]{ publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, retain); });
+void H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, bool retain MQTTPUBLISHPROPERTIES_API) { 
+    _runGuard([=]{ publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, retain MQTTPUBLISHPROPERTIES_CALL); });
 }
 
 void H4AsyncMQTT::setWill(const char* topic, uint8_t qos, bool retain, const char* payload) {

@@ -45,14 +45,34 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 // #define MQTT_VERSION       0x04 // 3.1.1
 #define MQTT_VERSION       0x05 // 5.0
 
-#if MQTT_VERSION == 0x05
+#if MQTT_VERSION >= 0x05
 #define MQTT5 1
-#define MQTT5_MAX_PACKET_SIZE  5200
-#define MQTT_RECEIVE_MAXIMUM   25
-#define MQTT_TOPIC_ALIAS_MAX   25
+
+// CONNECT Properties / Options
+#define MQTT_CONNECT_MAX_PACKET_SIZE  5200
+#define MQTT_CONNECT_RECEIVE_MAXIMUM   25
+#define MQTT_CONNECT_TOPIC_ALIAS_MAX   25
+// #define MQTT_CONNECT_SESSION_EXPRITY_INTERVAL 0
+
+#define MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION       0
+#define MQTT_CONNECT_REQUEST_PROBLEM_INFORMATION        0
+
+
+// SUBSCRIBE Properties / Options
+#define MQTT_SUBSCTIPTION_OPTION_NO_LOCAL               1
+#define MQTT_SUBSCTIPTION_OPTION_RETAIN_AS_PUBLISHED    1
+#define MQTT_SUBSCTIPTION_OPTION_RETAIN_HANDLING        1
+
+#define MQTTPUBLISHPROPERTIES_API_H ,MQTT5PublishProperties props = MQTT5PublishProperties()
+#define MQTTPUBLISHPROPERTIES_API ,MQTT5PublishProperties props
+#define MQTTPUBLISHPROPERTIES_CALL ,props
+
+
 
 #else
 #define MQTT5 0
+#define MQTTPUBLISHPROPERTIES_API
+#define MQTTPUBLISHPROPERTIES_CALL
 #endif
 
 #define H4AMC_HEADROOM        2000

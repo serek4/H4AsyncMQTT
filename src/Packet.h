@@ -35,11 +35,25 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 using H4AMC_BLOCK_Q        = std::queue<mbx>;
 
 class Packet {
+    protected:
 #if MQTT5
                 H4AMC_FN_U8PTRU8 _properties=[](uint8_t* p){ return p; };
                 uint32_t         _propertyLength=0;
+                void             _fetchUserProperties() {
+                    auto &u_props = _parent->_user_props[static_cast<PacketHeader>(_controlcode)];
+                    for (auto& up : u_props) { 
+                        _propertyLength += 4 + up->first.size() + up->second.size();
+                        _bs+=_propertyLength;
+                    }
+                }
+                uint8_t*          _embedUserProperties(uint8_t* p) {
+                    auto &u_props = _parent->_user_props[static_cast<PacketHeader>(_controlcode)];
+                    for (auto& up : u_props) { 
+                        MQTT_Properties::serializeUserProperty(p,*up);
+                    }
+                    return p;
+                }
 #endif
-    protected:
                 H4AsyncMQTT*     _parent;
                 uint16_t         _id=0; 
                 bool             _hasId=false;
@@ -102,5 +116,5 @@ class PublishPacket: public Packet {
         bool            _dup;
         uint16_t        _givenId=0;
     public:
-        PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId=0);
+        PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId=0 MQTTPUBLISHPROPERTIES_API_H);
 };

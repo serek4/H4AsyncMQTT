@@ -199,15 +199,20 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
             break;
 #if MQTT5
         case DISCONNECT:
-            // [ ] Handle DISCONNECT
+            // [ ] Parse DISCONNECT ?
             break;
         case AUTH:
-            // [ ] Handle AUTH
+            // [ ] Parse AUTH ?
             break;
 #endif
         default:
             {
                 if(isPublish()){
+#if MQTT5
+                    // [ ] Manage Subscription ID.
+                    // Look at _serverOptions.subscriptionIdentifierAvailable
+                    // and 
+#endif
                     retain=flags & 0x01;
                     dup=(flags & 0x8) >> 3;
                     qos=(flags & 0x6) >> 1;
