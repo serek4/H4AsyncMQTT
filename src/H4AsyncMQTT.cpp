@@ -32,7 +32,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #include <H4AsyncMQTT.h>
 #include "Packet.h"
 
-H4AMC_MEM_POOL          mbx::pool;
+H4T_MEM_POOL           mbx::pool;
 H4AMC_PACKET_MAP        H4AsyncMQTT::_inbound;
 H4AMC_PACKET_MAP        H4AsyncMQTT::_outbound;
 

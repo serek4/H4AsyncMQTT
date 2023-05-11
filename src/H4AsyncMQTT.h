@@ -157,7 +157,6 @@ using H4AMC_FN_U8PTRU8     = std::function<uint8_t*(uint8_t*)>;
 using H4AMC_PACKET_MAP      =std::map<uint16_t,mqttTraits>; // indexed by messageId
 using H4AMC_cbError         =std::function<void(int, int)>;
 using H4AMC_cbMessage       =std::function<void(const char* topic, const uint8_t* payload, size_t len,uint8_t qos,bool retain,bool dup)>;
-using H4AMC_MEM_POOL        =std::unordered_set<uint8_t*>;
 
 class Packet;
 class ConnectPacket;
@@ -169,30 +168,6 @@ enum {
     H4AMC_FATAL
 };
 
-class mbx {
-    public:
-        static  H4AMC_MEM_POOL  pool;
-                bool            managed;
-                int             len=0;
-                uint8_t*        data=nullptr;
-                uint8_t         flags=0;
-        mbx(){}
-        mbx(uint8_t* p,size_t s,bool copy=true,uint8_t f=0);
-        // 
-         ~mbx(){} // absolutely do not never nohow free the data pointer here! It must stay alive till it is ACKed
-
-                void            clear();
-        static  void            clear(uint8_t*);
-        static  uint8_t*        getMemory(size_t size);
-        static  void            dump(size_t slice=32){
-#if H4AMC_DEBUG
-            H4AMC_PRINT1("Memory POOL DUMP s=%d\n", pool.size());
-            for (auto &p:pool) Serial.printf("%p\t",p);
-            Serial.println();
-            for(auto &p:pool) dumphex(p,slice);
-#endif
-        }
-};
 class H4AsyncMQTT {
         friend class Packet;
         friend class ConnectPacket;
@@ -240,7 +215,6 @@ class H4AsyncMQTT {
                 void                disconnect();
         static  std::string         errorstring(int e);
                 std::string         getClientId(){ return _clientId; }
-                size_t inline       getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - H4T_HEAP_SAFETY) / 2 ; }
                 void                onConnect(H4_FN_VOID callback){ _cbMQTTConnect=callback; }
                 void                onDisconnect(H4_FN_VOID callback){ _cbMQTTDisconnect=callback; }
                 void                onError(H4AMC_cbError callback){ _cbMQTTError=callback; }

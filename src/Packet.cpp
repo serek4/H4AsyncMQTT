@@ -160,7 +160,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId):
     _topic(topic),_qos(qos),_retain(retain),_length(length),_dup(dup),_givenId(givenId),Packet(p,PUBLISH) {
 
-        if(length < _parent->getMaxPayloadSize()){
+        if(length < getMaxPayloadSize()){
             _begin=[this]{ 
                 _stringblock(_topic.c_str());
                 _bs+=_length;
