@@ -66,10 +66,12 @@ void Packet::_build(bool hold){
         }
         _end(snd_buf,virgin);
         if(!hold) {
+            auto isPublish = (_controlcode & 0xf0) == PUBLISH;
 #if H4AMC_DEBUG
-            if((_controlcode & 0xf0) != PUBLISH) mqttTraits traits(virgin,_bs);
+            if(!isPublish) mqttTraits traits(virgin,_bs);
 #endif
-            _parent->_h4atClient->TX(virgin,_bs,false);
+            _parent->_h4atClient->TX(virgin,_bs,isPublish && !_id);
+            if (isPublish && !_id) mbx::clear(virgin);
         }
     } else _parent->_notify(ERR_MEM,_bs);
 }
@@ -181,12 +183,10 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool
                 mqttTraits T(base,_bs);
                 if(_givenId) H4AsyncMQTT::_inbound[_id]=T;
                 else if(_qos) H4AsyncMQTT::_outbound[_id]=T;
-                else
-                    h4.once(10000U /* H4AT_WRITE_TIMEOUT */,[=](){mbx::clear(base);}); // Initial fix to QoS 0 memory leak.
             };
             _build(_givenId);/* why to pass _givenId which is always 0??? */
         } else {
-            H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,_parent->getMaxPayloadSize());
+            H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,getMaxPayloadSize());
             _parent->_notify(_givenId ? H4AMC_INBOUND_PUB_TOO_BIG:H4AMC_OUTBOUND_PUB_TOO_BIG,length);
         }
 }
