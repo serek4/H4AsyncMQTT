@@ -80,9 +80,16 @@ void H4AsyncMQTT::_clearQQ(H4AMC_PACKET_MAP* m){
 }
 
 void H4AsyncMQTT::_connect(){
-    static uint8_t PING[]={PINGREQ,0};    
-    
+    static uint8_t PING[]={PINGREQ,0};
+
     H4AMC_PRINT1("_connect %s _state=%d\n",_url.data(),_state);
+    if (_state != H4AMC_DISCONNECTED) {
+        H4AMC_PRINT1("Already connecting/connected\n");
+        return;
+    }
+
+    _state = H4AMC_CONNECTING;
+    
     _h4atClient->onConnect([=](){
         H4AMC_PRINT1("on TCP Connect\n");
         _h4atClient->nagle(true);
@@ -97,8 +104,15 @@ void H4AsyncMQTT::_connect(){
         h4.queueFunction([=]{ ConnectPacket cp{this}; }); // offload required for esp32 to get off tcpip thread
     });
 
+    _h4atClient->onConnectFail([=](){
+        H4AMC_PRINT1("onConnectFail - reconnect\n");
+        _state = H4AMC_DISCONNECTED;
+        _h4atClient=new H4AsyncClient;
+        _startReconnector();
+    });
+
     _h4atClient->onDisconnect([=]{
-        H4AMC_PRINT1("onDisconnect - start reconnector\n");
+        H4AMC_PRINT1("onDisconnect - reconnect\n");
         if(_state!=H4AMC_DISCONNECTED) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
         _state=H4AMC_DISCONNECTED;
 //        Serial.printf("CREATE NEW CLIENT!\n");
@@ -118,16 +132,26 @@ void H4AsyncMQTT::_connect(){
         */
         return true;
     });
-    _h4atClient->onConnectFail([=](){
-        H4AMC_PRINT1("onConnectFail - start reconnector\n");
-        _state = H4AMC_DISCONNECTED;
-        _h4atClient=new H4AsyncClient;
-        _startReconnector();
-    });
+
 
     _h4atClient->onRX([=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); });
+
+    auto cas = _caCert.size();
+    auto pks = _privkey.size();
+    auto pkps = _privkeyPass.size();
+    auto cs = _clientCert.size();
+    if (cas) {
+#if H4AT_TLS
+     _h4atClient->secureTLS(_caCert.data(), _caCert.size(), 
+                                pks ? _privkey.data() : nullptr, pks, 
+                                pkps ? _privkeyPass.data() : nullptr, pkps, 
+                                cs ? _clientCert.data() : nullptr, cs);
+#else 
+        H4AMC_PRINT1("Make sure TLS is enabled in H4AsyncTCP\n");
+#endif 
+    }
     _h4atClient->connect(_url);
-    _startReconnector();
+    // _startReconnector();
 }
 
 void H4AsyncMQTT::_hpDespatch(mqttTraits P){ 
@@ -172,16 +196,19 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     switch (traits.type){
         case CONNACK:
             if(i[1]) _notify(H4AMC_CONNECT_FAIL,i[1]);
+            else if (!_h4atClient->connected()){ // [ ] Generalize this condition?
+                H4AMC_PRINT1("ERR Received a delayed CONNACK, Connection was dropped\n");
+            }
             else {
                 _state=H4AMC_RUNNING;
                 bool session=i[0] & 0x01;
                 _ACKoutbound(0); // ACK connect to clear it from POOL.
-                _resendPartialTxns();
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
+                if(_state == H4AMC_RUNNING && _cbMQTTConnect) _cbMQTTConnect(); // A potential server disconnect catch while we _resendPartialTxns()
+                _resendPartialTxns();
 #if H4AMC_DEBUG
                 SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
 #endif
-                if(_cbMQTTConnect) _cbMQTTConnect();
             }
             break;
         case SUBACK:
@@ -267,9 +294,13 @@ void H4AsyncMQTT::_resendPartialTxns(){
                 PubrelPacket prp(this,m.id);
             }
             else {
-                H4AMC_PRINT4("SET DUP & RESEND %d\n",m.id);
-                m.data[0]|=0x08; // set dup & resend
-                _h4atClient->TX(m.data,m.len,false);
+                if (m.isPublish()) {  // set dup & resend ONLY for PUBlISH packets (..?)
+                    H4AMC_PRINT4("SET DUP %d\n", m.id);
+                    m.data[0] |= 0x08;
+                }
+                H4AMC_PRINT4("RESEND %d\n", m.id);
+                H4AMC_DUMP4(m.data, m.len);
+                _h4atClient->TX(m.data,m.len,false); // [ ] Concatenate all messages?
             }
         }
         else {
@@ -353,5 +384,34 @@ void H4AsyncMQTT::dump(){
     for(auto & p:_inbound) p.second.dump();
 
     H4AMC_PRINT4("\n");
+#endif
+}
+
+bool H4AsyncMQTT::secureTLS(const u8_t *ca, size_t ca_len, const u8_t *privkey, size_t privkey_len, const u8_t *privkey_pass, size_t privkey_pass_len, const u8_t *cert, size_t cert_len)
+{
+#if H4AT_TLS
+    // Copy to internals 
+    H4AMC_PRINT2("secureTLS(%p,%d,%p,%d,%p,%d,%p,%d)\n",ca,ca_len,privkey,privkey_len,privkey_pass,privkey_pass_len,cert,cert_len);
+
+    if (ca) {
+        _caCert.reserve(ca_len);
+        std::copy_n(ca, ca_len, std::back_inserter(_caCert));
+    }
+    if (privkey) {
+        _privkey.reserve(privkey_len);
+        std::copy_n(privkey, privkey_len, std::back_inserter(_privkey));
+    }
+    if (privkey_pass) {
+        _privkeyPass.reserve(privkey_pass_len);
+        std::copy_n(privkey_pass, privkey_pass_len, std::back_inserter(_privkeyPass));
+    }
+    if (cert) {
+        _clientCert.reserve(cert_len);
+        std::copy_n(cert, cert_len, std::back_inserter(_clientCert));
+    }
+    return true;
+#else
+    H4AMC_PRINT1("TLS is not activated within H4AsyncTCP\n");
+	return false;
 #endif
 }

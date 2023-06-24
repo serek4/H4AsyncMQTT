@@ -164,6 +164,7 @@ class PublishPacket;
 
 enum {
     H4AMC_DISCONNECTED,
+    H4AMC_CONNECTING,
     H4AMC_RUNNING,
     H4AMC_FATAL
 };
@@ -193,6 +194,11 @@ class H4AsyncMQTT {
                 uint8_t             _willQos;
                 bool                _willRetain;
                 std::string         _willTopic;
+
+                std::vector<uint8_t> _caCert;
+                std::vector<uint8_t> _privkey;
+                std::vector<uint8_t> _privkeyPass;
+                std::vector<uint8_t> _clientCert;
                
                 void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
                 void                _ACKoutbound(uint16_t id){ _ACK(&_outbound,id,false); }
@@ -212,6 +218,14 @@ class H4AsyncMQTT {
                 H4AsyncClient*      _h4atClient;
         H4AsyncMQTT();
                 void                connect(const char* url,const char* auth="",const char* pass="",const char* clientId="",bool clean=true);
+
+                /* secureTLS
+                    Make sure activating H4AT_TLS and passing a valid secure url "https", NOT "http" to connect securely.
+                    All keys/certificates must contain the null terminator if PEM encoded
+                 */
+                bool                secureTLS(const u8_t *ca, size_t ca_len, const u8_t *privkey = nullptr, size_t privkey_len=0,
+                                            const u8_t *privkey_pass = nullptr, size_t privkey_pass_len = 0,
+                                            const u8_t *cert = nullptr, size_t cert_len = 0);
                 void                disconnect();
         static  std::string         errorstring(int e);
                 std::string         getClientId(){ return _clientId; }
