@@ -31,6 +31,9 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 */
 #include <H4AsyncMQTT.h>
 #include "Packet.h"
+#if H4AT_TLS_SESSION
+#include "lwip/apps/altcp_tls_mbedtls_opts.h"
+#endif
 
 H4T_MEM_POOL           mbx::pool;
 H4AMC_PACKET_MAP        H4AsyncMQTT::_inbound;
@@ -87,7 +90,15 @@ void H4AsyncMQTT::_connect(){
         H4AMC_PRINT1("Already connecting/connected\n");
         return;
     }
-
+    // [ ] if network connected, proceed, else just follow create AsyncClient if not there. ..
+    if (_h4atClient)
+        _h4atClient->close();
+    
+    if (_networkState != H4AMC_NETWORK_CONNECTED) {
+        H4AMC_PRINT1("Network is disconnected\n"); // If it's connected, inform with informNetworkState() API
+        return;
+    }
+    _h4atClient = new H4AsyncClient;
     _state = H4AMC_CONNECTING;
     
     _h4atClient->onConnect([=](){
@@ -107,7 +118,7 @@ void H4AsyncMQTT::_connect(){
     _h4atClient->onConnectFail([=](){
         H4AMC_PRINT1("onConnectFail - reconnect\n");
         _state = H4AMC_DISCONNECTED;
-        _h4atClient=new H4AsyncClient;
+        _h4atClient = nullptr;
         _startReconnector();
     });
 
@@ -115,8 +126,7 @@ void H4AsyncMQTT::_connect(){
         H4AMC_PRINT1("onDisconnect - reconnect\n");
         if(_state!=H4AMC_DISCONNECTED) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
         _state=H4AMC_DISCONNECTED;
-//        Serial.printf("CREATE NEW CLIENT!\n");
-        _h4atClient=new H4AsyncClient;
+        _h4atClient = nullptr;
         _startReconnector();
     });
 
@@ -133,6 +143,34 @@ void H4AsyncMQTT::_connect(){
         return true;
     });
 
+#if H4AT_TLS_SESSION
+    static void* _tlsSession;
+    static uint32_t _lastSessionMs;
+    static std::string lastURL;
+    _h4atClient->enableTLSSession();
+    _h4atClient->onSession(
+        [=](void *tls_session)
+        {
+            H4AMC_PRINT1("onSession(%p)\n", tls_session);
+            _tlsSession = const_cast<void *>(tls_session);
+            _lastSessionMs = millis();
+            H4AMC_PRINT3("_tlsSession %p _lastSessionMs %u\n", _tlsSession, _lastSessionMs);
+        });
+
+
+    H4AMC_PRINT4("_url %s lastURL %s millis() %u _lastSessionMs %u diff=%u\n _url==lastURL=%d\tdiff<timeout=%d\n", _url.c_str(), lastURL.c_str(), millis(), _lastSessionMs, millis() - _lastSessionMs, 
+    _url == lastURL, (millis() - _lastSessionMs < ALTCP_MBEDTLS_SESSION_CACHE_TIMEOUT_SECONDS * 1000));
+    if (_url == lastURL && (millis() - _lastSessionMs < ALTCP_MBEDTLS_SESSION_CACHE_TIMEOUT_SECONDS * 1000)) {
+        _h4atClient->setTLSSession(_tlsSession);
+    } 
+    else {
+        if (_tlsSession) {
+            _h4atClient->freeTLSSession(_tlsSession);
+            _tlsSession = nullptr;
+        }
+    }
+    lastURL = _url;
+#endif
 
     _h4atClient->onRX([=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); });
 
@@ -323,12 +361,13 @@ void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,
 void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId,bool session){
     H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s,%d)\n",url,auth,pass,clientId,session);
     if(_state==H4AMC_DISCONNECTED){
-        _h4atClient=new H4AsyncClient;
+        // _h4atClient=new H4AsyncClient;
         _url=url;
         _username = auth;
         _password = pass;
         _cleanSession = session;
         _clientId = "" ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION);
+        informNetworkState(H4AMC_NETWORK_CONNECTED); // Assume being called on Network Connect.
         _connect();
         H4AsyncClient::_scavenge();
     } else if(_cbMQTTError) _cbMQTTError(ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
@@ -338,7 +377,7 @@ void H4AsyncMQTT::disconnect() {
     static uint8_t  G[]={DISCONNECT,0};
     H4AMC_PRINT1("USER DCX\n");
     if(_state==H4AMC_RUNNING) _h4atClient->TX(G,2,false);
-    else _h4atClient->_cbError(ERR_CONN,H4AMC_USER_LOGIC_ERROR);
+    else _notify(ERR_CONN,H4AMC_USER_LOGIC_ERROR);
 }
 
 std::string H4AsyncMQTT::errorstring(int e){

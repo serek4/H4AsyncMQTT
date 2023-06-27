@@ -169,11 +169,17 @@ enum {
     H4AMC_FATAL
 };
 
+enum NetworkState : uint8_t {
+    H4AMC_NETWORK_DISCONNECTED,
+    H4AMC_NETWORK_CONNECTED
+};
+
 class H4AsyncMQTT {
         friend class Packet;
         friend class ConnectPacket;
         friend class PublishPacket;
         friend class mqttTraits;
+                NetworkState        _networkState=H4AMC_NETWORK_CONNECTED;
                 uint32_t            _state=H4AMC_DISCONNECTED;
                 H4_FN_VOID          _cbMQTTConnect=nullptr;
                 H4_FN_VOID          _cbMQTTDisconnect=nullptr;
@@ -227,6 +233,7 @@ class H4AsyncMQTT {
                                             const u8_t *privkey_pass = nullptr, size_t privkey_pass_len = 0,
                                             const u8_t *cert = nullptr, size_t cert_len = 0);
                 void                disconnect();
+                void                informNetworkState(NetworkState state) { _networkState = state; }
         static  std::string         errorstring(int e);
                 std::string         getClientId(){ return _clientId; }
                 void                onConnect(H4_FN_VOID callback){ _cbMQTTConnect=callback; }
