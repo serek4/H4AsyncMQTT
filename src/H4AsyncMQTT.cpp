@@ -160,9 +160,9 @@ void H4AsyncMQTT::_connect(){
 
     H4AMC_PRINT4("_url %s lastURL %s millis() %u _lastSessionMs %u diff=%u\n _url==lastURL=%d\tdiff<timeout=%d\n", _url.c_str(), lastURL.c_str(), millis(), _lastSessionMs, millis() - _lastSessionMs, 
     _url == lastURL, (millis() - _lastSessionMs < ALTCP_MBEDTLS_SESSION_CACHE_TIMEOUT_SECONDS * 1000));
-    if (_url == lastURL && (millis() - _lastSessionMs < ALTCP_MBEDTLS_SESSION_CACHE_TIMEOUT_SECONDS * 1000)) {
+    if (_tlsSession && _url == lastURL && (millis() - _lastSessionMs < ALTCP_MBEDTLS_SESSION_CACHE_TIMEOUT_SECONDS * 1000)) {
         _h4atClient->setTLSSession(_tlsSession);
-    } 
+    }
     else {
         if (_tlsSession) {
             _h4atClient->freeTLSSession(_tlsSession);
