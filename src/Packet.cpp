@@ -70,7 +70,10 @@ void Packet::_build(bool hold){
 #if H4AMC_DEBUG
             if(!isPublish) mqttTraits traits(virgin,_bs);
 #endif
-            _parent->_h4atClient->TX(virgin,_bs,isPublish && !_id);
+            if (_parent->_h4atClient->connected())
+                _parent->_h4atClient->TX(virgin,_bs,isPublish && !_id);
+            else 
+                H4AMC_PRINT2("TCP UNCONNECTED!\n");
             if (isPublish && !_id) mbx::clear(virgin);
         }
     } else _parent->_notify(ERR_MEM,_bs);

@@ -109,8 +109,10 @@ void H4AsyncMQTT::_connect(){
         h4.every(_keepalive - H4AMC_HEADROOM,[=]{
             if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
                 H4AMC_PRINT1("MQTT PINGREQ\n");
-                _h4atClient->TX(PING,2,false); /// optimise
-            } //else Serial.printf("No ping: activity %d mS ago\n",(millis() - _h4atClient->_lastSeen));
+                if (_h4atClient->connected()) // [ ] Might only rely on _state
+                    _h4atClient->TX(PING, 2, false); /// optimise
+                else H4AMC_PRINT3("TCP UNCONNECTED\n");
+            } // else Serial.printf("No ping: activity %d mS ago\n",(millis() - _h4atClient->_lastSeen));
         },nullptr,H4AMC_KA_ID,true);
         h4.queueFunction([=]{ ConnectPacket cp{this}; }); // offload required for esp32 to get off tcpip thread
     });
@@ -338,7 +340,9 @@ void H4AsyncMQTT::_resendPartialTxns(){
                 }
                 H4AMC_PRINT4("RESEND %d\n", m.id);
                 H4AMC_DUMP4(m.data, m.len);
-                _h4atClient->TX(m.data,m.len,false); // [ ] Concatenate all messages?
+                if (_h4atClient->connected())
+                    _h4atClient->TX(m.data,m.len,false); // [ ] Concatenate all messages
+                else H4AMC_PRINT2("TCP DISCONNECTED!\n");
             }
         }
         else {
