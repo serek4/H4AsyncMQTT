@@ -37,21 +37,30 @@ using H4AMC_BLOCK_Q        = std::queue<mbx>;
 class Packet {
     protected:
 #if MQTT5
+                // uint8_t          _reasonCode=0; // If we meant to imply it.
                 H4AMC_FN_U8PTRU8 _properties=[](uint8_t* p){ return p; };
                 uint32_t         _propertyLength=0;
-                void             _fetchUserProperties() {
-                    auto &u_props = _parent->_user_props[static_cast<PacketHeader>(_controlcode)];
-                    for (auto& up : u_props) { 
-                        _propertyLength += 4 + up->first.size() + up->second.size();
-                        _bs+=_propertyLength;
-                    }
+
+                std::shared_ptr<USER_PROPERTIES_MAP> _dynProps;
+
+                void             __fetchSize(USER_PROPERTIES_MAP& props);
+                void             __fetchPassedProps(USER_PROPERTIES_MAP& props);
+                void             __fetchStaticProps();
+                void             __fetchDynamicProps();
+                uint8_t*         __embedProps(uint8_t* p, USER_PROPERTIES_MAP& props);
+                uint8_t*         __embedPassedProps(uint8_t* p, USER_PROPERTIES_MAP& props);
+                uint8_t*         __embedStaticProps(uint8_t* p);
+                uint8_t*         __embedDynamicProps(uint8_t* p);
+                void             _fetchUserProperties(USER_PROPERTIES_MAP& publish_userProps) {
+                    __fetchPassedProps(publish_userProps);
+                    __fetchStaticProps();
+                    __fetchDynamicProps();
                 }
-                uint8_t*          _embedUserProperties(uint8_t* p) {
-                    auto &u_props = _parent->_user_props[static_cast<PacketHeader>(_controlcode)];
-                    for (auto& up : u_props) { 
-                        MQTT_Properties::serializeUserProperty(p,*up);
-                    }
-                    return p;
+
+                uint8_t*          _embedUserProperties(uint8_t* p, USER_PROPERTIES_MAP& props) {
+                    p=__embedPassedProps(p, props);
+                    p=__embedStaticProps(p);
+                    return __embedDynamicProps(p);
                 }
 #endif
                 H4AsyncMQTT*     _parent;
@@ -63,10 +72,10 @@ class Packet {
                 H4AMC_FN_VOID    _begin=[]{};   //** Setup the packet traits
                 H4AMC_FN_U8PTRU8 _varHeader=[](uint8_t* p){ return p; };
                 H4AMC_FN_U8PTR   _protocolPayload=[](uint8_t* p,uint8_t* base){};
-                void	         _build(bool hold=false);
+                void	         _build();
                 void             _idGarbage(uint16_t id);
                 void             _initId();
-                void             _multiTopic(std::initializer_list<const char*> topix,uint8_t qos=0);
+                void             _multiTopic(std::set<std::string> topix,H4AMC_SubscriptionOptions opts={});
                 uint8_t*         _poke16(uint8_t* p,uint16_t u);
                 void             _stringblock(const std::string& s);
     public:
@@ -97,15 +106,27 @@ class PubcompPacket: public Packet {
         PubcompPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBCOMP,true) { _idGarbage(id); }  
 };
 class SubscribePacket: public Packet {
+#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+    uint32_t subscription_id=0;
+#endif
     public:
-        SubscribePacket(H4AsyncMQTT* p,const std::string& topic,uint8_t qos): Packet(p,SUBSCRIBE,true) { _multiTopic({topic.data()},qos); }
-        SubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix,uint8_t qos): Packet(p,SUBSCRIBE,true) { _multiTopic(topix,qos); }
+        SubscribePacket(H4AsyncMQTT* p,const std::string& topic,H4AMC_SubscriptionOptions opts): Packet(p,SUBSCRIBE,true) { _multiTopic({topic.data()},opts); }
+        SubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix,H4AMC_SubscriptionOptions opts): Packet(p,SUBSCRIBE,true) { _multiTopic(std::set<std::string>(topix.begin(), topix.end()),opts); }
+        uint32_t    getId() { 
+#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+            return subscription_id;
+#else
+            return 0;
+#endif
+
+        }
 };
 
 class UnsubscribePacket: public Packet {
     public:
         UnsubscribePacket(H4AsyncMQTT* p,const std::string& topic): Packet(p,UNSUBSCRIBE,true) { _multiTopic({topic.data()}); }
-        UnsubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix): Packet(p,UNSUBSCRIBE,true) { _multiTopic(topix); }
+        UnsubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix): Packet(p,UNSUBSCRIBE,true) { _multiTopic(std::set<std::string>(topix.begin(), topix.end())); }
+        UnsubscribePacket(H4AsyncMQTT* p,std::set<std::string> topix): Packet(p,UNSUBSCRIBE,true) { _multiTopic(topix); }
 };
 
 class PublishPacket: public Packet {
@@ -113,8 +134,8 @@ class PublishPacket: public Packet {
         uint8_t         _qos;
         bool            _retain;
         size_t          _length;
-        bool            _dup;
-        uint16_t        _givenId=0;
+        // bool            _dup;
     public:
-        PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, bool retain, const uint8_t* payload, size_t length, bool dup,uint16_t givenId=0 MQTTPUBLISHPROPERTIES_API_H);
+        PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, const uint8_t* payload, size_t length, H4AMC_PublishOptions opts_retain);
+        uint16_t getId(){ return _id; }
 };

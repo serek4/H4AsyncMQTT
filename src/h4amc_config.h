@@ -40,7 +40,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
     4 - everything including full payload hex dump (and deep diagnostics!)
 */
 
-#define H4AMC_DEBUG 0
+#define H4AMC_DEBUG 1
 
 // #define MQTT_VERSION       0x04 // 3.1.1
 #define MQTT_VERSION       0x05 // 5.0
@@ -48,34 +48,36 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #if MQTT_VERSION >= 0x05
 #define MQTT5 1
 
+#define MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT           1
+#define MQTT5_RX_TOPIC_ALIAS_MAXIMUM                    50
+#define MQTT5_TX_TOPIC_ALIAS_MAXIMUM                    50
+
+
+
 // CONNECT Properties / Options
 #define MQTT_CONNECT_MAX_PACKET_SIZE  5200
 #define MQTT_CONNECT_RECEIVE_MAXIMUM   25
-#define MQTT_CONNECT_TOPIC_ALIAS_MAX   25
+#define MQTT_CONNECT_TOPIC_ALIAS_MAX   MQTT5_RX_TOPIC_ALIAS_MAXIMUM
 // #define MQTT_CONNECT_SESSION_EXPRITY_INTERVAL 0
+
 
 #define MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION       0
 #define MQTT_CONNECT_REQUEST_PROBLEM_INFORMATION        0
 
 
 // SUBSCRIBE Properties / Options
-#define MQTT_SUBSCTIPTION_OPTION_NO_LOCAL               1
-#define MQTT_SUBSCTIPTION_OPTION_RETAIN_AS_PUBLISHED    1
-#define MQTT_SUBSCTIPTION_OPTION_RETAIN_HANDLING        1
-
-#define MQTTPUBLISHPROPERTIES_API_H ,MQTT5PublishProperties props = MQTT5PublishProperties()
-#define MQTTPUBLISHPROPERTIES_API ,MQTT5PublishProperties props
-#define MQTTPUBLISHPROPERTIES_CALL ,props
-
+#define MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL               0 // Default behaviour for MQTT v3.3, and it's protocol error to set it to 1 for Shared Subscriptions in MQTT v5.0
+#define MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED    1
+#define MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING        1
 
 
 #else
 #define MQTT5 0
-#define MQTTPUBLISHPROPERTIES_API
-#define MQTTPUBLISHPROPERTIES_CALL
+#define MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT           0
 #endif
 
 #define H4AMC_HEADROOM        2000
 #define KEEP_ALIVE_INTERVAL   (H4AS_SCAVENGE_FREQ - H4AMC_HEADROOM)
 
 #define H4AMC_MAX_RETRIES        2 // No need to specify this, as it should just retry publishes at successful CONNACK only???
+#define H4AMC_ENABLE_CHECKS      1

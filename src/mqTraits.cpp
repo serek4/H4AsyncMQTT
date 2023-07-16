@@ -145,14 +145,13 @@ std::map<H4AMC_MQTT5_Property,char*> mqttTraits::propnames {
         {0x80,"Failure"}
     };
 #endif
-
 #endif
 
 std::string mqttTraits::_decodestring(uint8_t** p){
     return H4AMC_Helpers::decodestring(p);
 }
 
-mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
+mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic alias...
     type=data[0];
     flags=(data[0] & 0xf);
 //  CALCULATE RL
@@ -186,40 +185,77 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
     else H4AMC_PRINT3("LL s=%d RL=%d offset=%d L=%d\n",s,remlen,offset,1+offset+remlen);
 #endif
 */
+    auto i = start();
+    uint8_t* ii; // helping pointer
+    /* Parse Variable Header */
     switch(type){
+        case CONNACK:
+            // conackflags=i[0];
+            conackflags=_parse8(&i);
+            // reasoncode=i[1];
+#if MQTT5
+            // if (i[2]) initiateProperties(&i[2]);
+        case DISCONNECT:
+        case AUTH:
+            if (remlen){
+                reasoncode = _parse8(&i);
+                if (remlen>=2 && *i){// remlen>=2 is always true for CONNACK, also should *i
+                    initiateProperties(i);
+                }
+            }
+#endif
+            break;
         case PUBACK:
         case PUBREC:
         case PUBREL:
         case PUBCOMP:
+#if MQTT5
+            id=_peek16(i);
+            if (remlen>2){
+                reasoncode = i[2];
+                if (remlen>=4 && i[3]) initiateProperties(&i[3]);//discard protocolpayload pointer
+            }
+            break;
+#endif
         case SUBSCRIBE:
         case SUBACK:
         case UNSUBSCRIBE:
         case UNSUBACK:
-            id=_peek16(start());
-            break;
+            id=_peek16(&i[0]);
 #if MQTT5
-        case DISCONNECT:
-            // [ ] Parse DISCONNECT ?
-            break;
-        case AUTH:
-            // [ ] Parse AUTH ?
-            break;
+            if (i[2]) {
+                auto ret = initiateProperties(&i[2]);
+                if (!ret.first) protocolpayload=ret.second;
+            } else protocolpayload=&i[3];
+#else
+            protocolpayload=i[2];
 #endif
+            if (type == SUBACK || type == UNSUBACK) {
+                int reasons = data+len-protocolpayload;
+                for (int ri=0;ri<reasons;ri++){
+                    subreasons.push_back(protocolpayload[ri]);
+                }
+            }
+            break;
         default:
             {
                 if(isPublish()){
-#if MQTT5
-                    // [ ] Manage Subscription ID.
-                    // Look at _serverOptions.subscriptionIdentifierAvailable
-                    // and 
-#endif
                     retain=flags & 0x01;
                     dup=(flags & 0x8) >> 3;
                     qos=(flags & 0x6) >> 1;
-                    payload=start();
-                    topic=_decodestring(&payload);
-                    if(qos){ id=_peek16(payload);payload+=2; }
-                    plen=data+len-payload;
+                    ii=i; // Work on a copy of original i=start();
+                    topic=_decodestring(&ii);
+                    if(qos){ id=_peek16(ii);ii+=2; }
+                    protocolpayload=ii;
+#if MQTT5
+                    if (*ii) { // Properties (Property length field)
+                        Serial.printf("FOUND PROPS\n");
+                        auto ret = initiateProperties(ii);
+                        if (!ret.first) { protocolpayload=ret.second; }
+                    }
+#endif
+                    payload=protocolpayload;
+                    plen=data+len-protocolpayload;
                 }
             }
             break;
@@ -237,88 +273,105 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){
         case SUBACK:
         case UNSUBACK:
             H4AMC_PRINT3("  id: %d\n",id);
+#if MQTT5
+            if (type==SUBACK || type==UNSUBACK) {
+                H4AMC_PRINT3("  Reason Codes:\t");
+                int count=subreasons.size();
+                for (auto &rc:subreasons){
+                    bool last=count==1;
+                    H4AMC_PRINTF("%02X%s", rc, last?"":",");
+                    count--;
+                }
+            } else
+                H4AMC_PRINT3("  reasoncode: %d\n",reasoncode);
+#endif
             break;
         case CONNECT:
             {
                 uint8_t cf=data[9];
                 H4AMC_PRINT3("  Protocol: %s\n",data[8]==4 ? "3.1.1":stringFromInt(data[8],"0x%02x").data());
                 H4AMC_PRINT4("  Flags: 0x%02x\n",cf);
-#if MQTT5
-                H4AMC_PRINT3("  Session: %s\n",((cf & CLEAN_START) >> 1) ? "Clean":"Dirty");
-#else
-                H4AMC_PRINT3("  Session: %s\n",((cf & CLEAN_SESSION) >> 1) ? "Clean":"Dirty");
-#endif
+                H4AMC_PRINT3("  Session: %s\n",((cf & H4AMC_SESSION_CLEAN_START) >> 1) ? "Clean":"Dirty");
                 H4AMC_PRINT3("  Keepalive: %d\n",_peek16(&data[10]));
                 uint8_t* sp=&data[12];
                 H4AMC_PRINT3("  ClientId: %p %s\n",sp,_decodestring(&sp).data());
                 if(cf & WILL){
+#if MQTT5
+                    MQTT_Properties will_props;
+                    auto ret = will_props.parseProperties(sp);
+                    if (!ret.first) sp=ret.second;
+                    H4AMC_PRINT3("  Will Properties:\n");
+                    will_props.dump();
+#endif
                     H4AMC_PRINT3("  Will Topic: %p %s\n",sp,_decodestring(&sp).data());
                     if(cf & WILL_RETAIN) H4AMC_PRINT3("  Will: RETAIN\n");
                     H4AMC_PRINT3("  Will QoS: %d\n",(cf >> 3) &0x3);
                     H4AMC_PRINT3("  Will Message: %p %s\n",sp,_decodestring(&sp).data());
-                } 
+                }
                 if(cf & USERNAME) H4AMC_PRINT3("  Username: %s\n",_decodestring(&sp).data());
                 if(cf & PASSWORD) H4AMC_PRINT3("  Password: %s\n",_decodestring(&sp).data());
                 break;
             }
         case CONNACK:
             {
-                switch(data[3]){
-                    case 0: // 0x00 Connection Accepted
-                        H4AMC_PRINT3("  Session: %s\n",((data[2]) & 1) ? "Present":"None");
-                        break;
-                    case 1: // 0x01 Connection Refused, unacceptable protocol version
-                        H4AMC_PRINT3("  Error: %s\n","unacceptable protocol version");
-                        break;
-                    case 2: // 0x02 Connection Refused, identifier rejected
-                        H4AMC_PRINT3("  Error: %s\n","client identifier rejected");
-                        break;
-                    case 3: // 0x03 Connection Refused, Server unavailable
-                        H4AMC_PRINT3("  Error: %s\n","Server unavailable");
-                        break;
-                    case 4: // 0x04 Connection Refused, bad user name or password
-                        H4AMC_PRINT3("  Error: %s\n","bad user name or password");
-                        break;
-                    case 5: // 0x05 Connection Refused, not authorized
-                        H4AMC_PRINT3("  Error: %s\n","not authorized");
-                        break;
-                    default: // ??????
-                        H4AMC_PRINT3("  SOMETHING NASTY IN THE WOODSHED!!\n");
-                        break;
+#if MQTT5
+                H4AMC_PRINT3("  %s%s\n", reasoncode?"Error: " : "", rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(reasoncode)]);
+#else
+                H4AMC_PRINT3("  %s%s\n", reasoncode?"Error: " : "", connacknames[reasoncode]);
+#endif
+                if (!reasoncode) {
+                    H4AMC_PRINT3("  Session: %s\n",(conackflags & 1) ? "Present":"None");
                 }
             }
+#if MQTT5
+        case DISCONNECT:
+        case AUTH:
+            H4AMC_PRINT3("  ReasonCode %02X\n", reasoncode);
+#endif
             break;
         case SUBSCRIBE:
         case UNSUBSCRIBE:
             {
                 H4AMC_PRINT3("  id: %d\n",id);
-                uint8_t* payload=start()+2;
+                uint8_t* payload=protocolpayload;
                 do {
                     uint16_t len=_peek16(payload);
                     payload+=2;
                     std::string topic((const char*) payload,len);
                     payload+=len;
                     if(type==SUBSCRIBE) {
-                        uint8_t qos=*payload++;
+                        uint8_t subopts=*payload++;
+                        uint8_t qos = subopts&0x3;
+#if MQTT5
+                        bool    nl  = subopts&0x4;
+                        bool    rap = subopts&0x8;
+                        uint    rh  = subopts&0x30;
+                        H4AMC_PRINT3("  Topic: QoS%d %s NL%d RAP%d RH%d\n",qos,topic.data(),nl,rap,rh);
+#else
                         H4AMC_PRINT3("  Topic: QoS%d %s\n",qos,topic.data());
-                    } 
+#endif
+                    }
                     else H4AMC_PRINT3("  Topic: %s\n",topic.data());
                 } while (payload < (data + len));
             }
             break;
+
         default:
-            {
-                if(isPublish()){
-                    if(qos) H4AMC_PRINT3("  id: %d\n",id);
-                    H4AMC_PRINT3("  qos: %d\n",qos);
-                    if(dup) H4AMC_PRINT3("  DUP\n");
-                    if(retain) H4AMC_PRINT3("  RETAIN\n");
-                    H4AMC_PRINT3("  Topic: %s\n",topic.data());
-                    H4AMC_PRINT3("  Payload size: %d\n",plen);
-                }
-                else Serial.printf("WTF99999999999999999999999?\n");
+        {
+            if(isPublish()){
+                if(qos) H4AMC_PRINT3("  id: %d\n",id);
+                H4AMC_PRINT3("  qos: %d\n",qos);
+                if(dup) H4AMC_PRINT3("  DUP\n");
+                if(retain) H4AMC_PRINT3("  RETAIN\n");
+                H4AMC_PRINT3("  Topic: %s\n",topic.data());
+                H4AMC_PRINT3("  Payload size: %d\n",plen);
             }
-            break;
+            else Serial.printf("WTF99999999999999999999999?\n");
+        }
+        break;
+    }
+    if (properties) {
+        properties->dump();
     }
 }
 

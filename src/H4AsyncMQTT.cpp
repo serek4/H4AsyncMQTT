@@ -33,7 +33,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #include "Packet.h"
 
 H4AMC_MEM_POOL          mbx::pool;
-H4AMC_PACKET_MAP        H4AsyncMQTT::_inbound;
+std::set<int>           H4AsyncMQTT::_inbound;
 H4AMC_PACKET_MAP        H4AsyncMQTT::_outbound;
 
 H4_INT_MAP H4AsyncMQTT::_errorNames={
@@ -141,7 +141,7 @@ void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout){ /// refakta?
 
 void H4AsyncMQTT::_startClean(){
     H4AMC_PRINT4("_startClean clrQQ inbound\n");
-    _clearQQ(&_inbound);
+    _inbound.clear();
     H4AMC_PRINT4("_startClean clrQQ outbound\n");
     _clearQQ(&_outbound);
 }
@@ -151,21 +151,39 @@ void H4AsyncMQTT::_clearQQ(H4AMC_PACKET_MAP* m){
     m->clear();
 }
 
-void H4AsyncMQTT::_connect(){
+void H4AsyncMQTT::_startPinging(uint32_t keepalive)
+{
+    _keepalive = keepalive;
+    H4AMC_PRINT1("KA = %d\n",_keepalive - H4AMC_HEADROOM);
     static uint8_t PING[]={PINGREQ,0};    
+    h4.every(_keepalive - H4AMC_HEADROOM,[=]{ // [ ] Change rate if _keepalive changes on CONNACK.
+        if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
+            H4AMC_PRINT1("MQTT PINGREQ\n");
+            _h4atClient->TX(PING,2,false); /// optimise
+        } //else Serial.printf("No ping: activity %d mS ago\n",(millis() - _h4atClient->_lastSeen));
+    },nullptr,H4AMC_KA_ID,true);
+}
+
+void H4AsyncMQTT::_redirect(MQTT_Properties& props)
+{
+    std::string reference;
+    if (props.isAvailable(PROPERTY_SERVER_REFERENCE)) {
+        H4AMC_PRINT1("Server Reference=%s\n", props.getStringProperty(PROPERTY_SERVER_REFERENCE).c_str());
+        reference=props.getStringProperty(PROPERTY_SERVER_REFERENCE);
+    } else {
+        H4AMC_PRINT1("Server Reference not available\n");
+    }
+    if (_cbRedirect) (_cbRedirect(reference));
+}
+
+void H4AsyncMQTT::_connect(){
     
     H4AMC_PRINT1("_connect %s _state=%d\n",_url.data(),_state);
     _h4atClient->onConnect([=](){
         H4AMC_PRINT1("on TCP Connect\n");
         _h4atClient->nagle(true);
         h4.cancelSingleton(H4AMC_RCX_ID);
-        H4AMC_PRINT1("KA = %d\n",_keepalive - H4AMC_HEADROOM);
-        h4.every(_keepalive - H4AMC_HEADROOM,[=]{ // [ ] Change rate if _keepalive changes on CONNACK.
-            if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
-                H4AMC_PRINT1("MQTT PINGREQ\n");
-                _h4atClient->TX(PING,2,false); /// optimise
-            } //else Serial.printf("No ping: activity %d mS ago\n",(millis() - _h4atClient->_lastSeen));
-        },nullptr,H4AMC_KA_ID,true);
+        _startPinging();
         h4.queueFunction([=]{ ConnectPacket cp{this}; }); // offload required for esp32 to get off tcpip thread
     });
 
@@ -175,6 +193,9 @@ void H4AsyncMQTT::_connect(){
         _state=H4AMC_DISCONNECTED;
 //        Serial.printf("CREATE NEW CLIENT!\n");
         _h4atClient=new H4AsyncClient;
+#if MQTT5
+        clearAliases(); // valid per network session
+#endif
         _startReconnector();
     });
 
@@ -202,6 +223,12 @@ void H4AsyncMQTT::_connect(){
     _startReconnector();
 }
 
+void H4AsyncMQTT::_destroyClient() {
+    if (_h4atClient && _h4atClient->connected()) {
+        _h4atClient->close();
+    }
+    _h4atClient=nullptr; // OR the callback?
+}
 void H4AsyncMQTT::_hpDespatch(mqttTraits P){ 
     if(_cbMessage) {
 #if H4AMC_DEBUG
@@ -233,7 +260,6 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
     }
 }
 
-void H4AsyncMQTT::_hpDespatch(uint16_t id){ _hpDespatch(_inbound[id]); }
 
 void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     H4AMC_DUMP4(data,len);
@@ -244,229 +270,250 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     mqttTraits traits(data,len);
     if(traits.malformed_packet)
     {
-        H4AMC_PRINT1("Malformed packet! Stop processing\n");
+        H4AMC_PRINT1("Malformed packet! DISCONNECT\n");
         // [ ] MAY Send a DISCONNECT packet to the server with a Reason Code of 0x81 (Malformed Packet)
         // _disconnect(MALFORMED_PACKET);
-        // _destroyClient();
-
-        // At this process, discard the session state?
+        _destroyClient();
         return;
     }
     auto i=traits.start();
     uint16_t id=traits.id;
-
+#if MQTT5
+    auto props = traits.properties ? *(traits.properties) : MQTT_Properties();
+#endif
+    auto rcode = traits.reasoncode;
     switch (traits.type)
     {
     case CONNACK:
     {
-#if MQTT5
-        USER_PROPERTIES_MAP user_properties;
-        MQTT_Properties props;
-        if (i[2])
-        { // Always represent the CONNACK length.
-            auto [rc, ptr] = props.parseProperties(&i[2]);
-            if (rc)
-            {
-                H4AMC_PRINT1("CONNACK: Malformed Properties! Stop processing\n");
-                // [ ] send DISCONNECT packet with Reason Code rc
-                // [ ] disconnect(rc);
-            }
-        }
-#endif
-
-        switch (i[1])
+        switch (rcode)
         {
-            case 0x00:
-            {
-                user_properties = props.getUserProperties();
 #if MQTT5
-                if (_serverOptions) 
-                    delete _serverOptions;
-                _serverOptions = new Server_Options;
-                for (auto &p : props.available_properties)
-                {
-                    switch (p)
-                    {
-                    // case PROPERTY_SESSION_EXPIRY_INTERVAL:
-                    //     _serverOptions->session_expiry_interval = props.getNumericProperty(p);
-                    //     break;
-                    case PROPERTY_RECEIVE_MAXIMUM:
-                        _serverOptions->receive_max = props.getNumericProperty(p);
-                        break;
-                    case PROPERTY_MAXIMUM_QOS:
-                        _serverOptions->maximum_qos = props.getNumericProperty(p);
-                        break;
-                    case PROPERTY_RETAIN_AVAILABLE:
-                        _serverOptions->retain_available = props.getNumericProperty(p);
-                        break;
-                    case PROPERTY_MAXIMUM_PACKET_SIZE:
-                        _serverOptions->maximum_packet_size = props.getNumericProperty(p);
-                        break;
-                    case PROPERTY_ASSIGNED_CLIENT_IDENTIFIER:
-                        H4AMC_PRINT1("Assigned ClientID=%s\n", props.getStringProperty(p).c_str());
-                        break;
-                    case PROPERTY_TOPIC_ALIAS_MAXIMUM:
-                        _serverOptions->topic_alias_max = props.getNumericProperty(p);
-                        break;
-                    case PROPERTY_REASON_STRING:
-                        H4AMC_PRINT1("Reason String=%s\n", props.getStringProperty(p).c_str());
-                        break;
-                    case PROPERTY_WILDCARD_SUBSCRIPTION_AVAILABLE:
-                        _serverOptions->wildcard_subscription_available = props.getNumericProperty(p);
-                        break;
-                    case PROPERTY_SUBSCRIPTION_IDENTIFIER_AVAILABLE:
-                        _serverOptions->subscriptions_identifiers_available = props.getNumericProperty(p);
-                        break;
-                    case PROPERTY_SHARED_SUBSCRIPTION_AVAILABLE:
-                        _serverOptions->shared_subscription_available = props.getNumericProperty(p);
-                        break;
-                    case PROPERTY_SERVER_KEEP_ALIVE:
-                    {
-                        auto v = props.getNumericProperty(p);
-                        if (v < _keepalive)
-                        {
-                            _keepalive = v;
-                            // [] ] Change the PINGREQ timer to the new value.
-                        }
-                        break;
-                    }
-                    break;
-                    case PROPERTY_RESPONSE_INFORMATION:
-                        _serverOptions->response_information = props.getStringProperty(p);
-                        break;
-                        // [ ] Handle Authentication Method and Data...
-/*                     case PROPERTY_AUTHENTICATION_METHOD:
-                        _serverOptions->authentication_method = props.getStringProperty(p);
-                        break;
-                    case PROPERTY_AUTHENTICATION_DATA:
-                        _serverOptions->authentication_data = props.getStringProperty(p);
-                        break; */
-                    default:
-                        break;
-                    }
-                }
-
-            // printProperties?
+        case REASON_SUCCESS:
+            if (!traits.properties) {
+                H4AMC_PRINT1("INCOMPLIAT SERVER!\n");
+                return;
+            }
+            _handleConnackProps(*(traits.properties));
+#else
+        case 0x00:
 #endif
+        {
                 
-                _state=H4AMC_RUNNING;
-                bool session=i[0] & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
+            _state=H4AMC_RUNNING;
+            bool session=i[0] & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
 
-                _ACKoutbound(0); // ACK connect to clear it from POOL.
-                _resendPartialTxns(/* Accept bool session */);
-                H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
+            _ACKoutbound(0); // ACK connect to clear it from POOL.
+            if (!session){
+                _startClean();
+            }
+            _resendPartialTxns(session);
+            H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
 #if H4AMC_DEBUG
-                SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
+            SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
 #endif
-                if(_cbMQTTConnect) _cbMQTTConnect(user_properties);
-            }
-            break;
 #if MQTT5
-            case REASON_SERVER_MOVED:
-            case REASON_USE_ANOTHER_SERVER:
-            if (props.isAvailable(PROPERTY_SERVER_REFERENCE))
-            {
-                H4AMC_PRINT1("CONNACK: Server Reference=%s\n", props.getStringProperty(PROPERTY_SERVER_REFERENCE).c_str());
-                // [ ] MAY attempt to connect to the server referenced in the Server Reference property.
-            }
-            else
-            {
-                H4AMC_PRINT1("CONNACK: Server Reference not available\n");
-            }
+            if(_cbMQTTConnect) _cbMQTTConnect(traits.properties->getUserProperties());
+#else
+            if(_cbMQTTConnect) _cbMQTTConnect();
+#endif
+        }
+                break;
+#if MQTT5
+        case REASON_SERVER_MOVED:
+        case REASON_USE_ANOTHER_SERVER:
+            _redirect(*(traits.properties));
             break;
             default:
-                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(i[1])]);
-                // [ ] Inform the user of the CONNACK packet Reason Code when a failure occurs.
-                // if (_cbProtocolEvent) _cbProtocolEvent(CONNECT_FAIL, static_cast<H4AMC_MQTT5_ReasonCode>(i[1]), traits.props);
+                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(rcode)]);
+                // [ ] Inform the user of the CONNACK packet Reason Code when a failure occurs. (Not needed)
+                // if (_cbProtocolEvent) _cbProtocolEvent(CONNECT_FAIL, static_cast<H4AMC_MQTT5_ReasonCode>(rcode), traits.props);
                 
 #else
             default: 
-                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[i[1]]);
+                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[rcode]);
 #endif
-                _notify(H4AMC_CONNECT_FAIL, i[1]);
+                _notify(H4AMC_CONNECT_FAIL, rcode);
             break;
         }
-
     }
-            break;
-        case SUBACK:
-            if(i[2] & 0x80) _notify(H4AMC_SUBSCRIBE_FAIL,id);
-            else _ACKoutbound(id);  // MAX retries applies??
-            break;
-        case PUBACK:
-        case PUBCOMP:
-        case UNSUBACK:
-            _ACKoutbound(id);
-            break;
-        case PUBREC:
-            {
-                _outbound[id].pubrec=true;
-                PubrelPacket prp(this,id);
-            }
-            break;
-        case PUBREL:
-            {
-                if(_inbound.count(id)) {
-                    _hpDespatch(_inbound[id]);
-                    _ACK(&_inbound,id,true); // true = inbound
-                } else _notify(H4AMC_INBOUND_QOS_ACK_FAIL,id);
-                PubcompPacket pcp(this,id); // pubrel
-            }
-            break;
-#if MQTT5
-        case DISCONNECT: // Server disconnect.
-            
-            // fetch reason
-            // notify
-            // _destroyClient();
-            if (_cbMQTTDisconnect) 
-                _cbMQTTDisconnect(); // [ ] pass reason alongwith  any server redirection info (Properties)
-            break;
-        case AUTH:
-            //[ ]  Handle Auth request ...
+        break;
+    case PUBACK:
+    case PUBCOMP:
+        if (_cbPublish) _cbPublish(id);
+    case UNSUBACK:
+#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+        if (_packSubIds.count(id)) {
+            _confirmDeletion(id);
+        }
+#endif
+    case SUBACK:
+    {
+        bool badSub=false;
+        for (auto &rc : traits.subreasons)
+            if (rc>=0x80) badSub=true;
 
+        if (badSub)
+            _notify(traits.type==SUBACK?H4AMC_SUBSCRIBE_FAIL:H4AMC_UNSUBSCRIBE_FAIL, id);
+    }
+        _ACKoutbound(id); // MAX retries applies??
+        break;
+    case PUBREC:
+        {
+            _outbound[id].pubrec=true;
+            PubrelPacket prp(this,id);
+        }
+        break;
+    case PUBREL:
+        {
+            if(_inbound.count(id)) {
+                _inbound.erase(id);
+            } else _notify(H4AMC_INBOUND_QOS_ACK_FAIL,id);
+            PubcompPacket pcp(this,id); // pubrel
+        }
+        break;
+#if MQTT5
+    case DISCONNECT: // Server disconnect.
+    {
+        switch(rcode) {
+            case REASON_SERVER_MOVED:
+            case REASON_USE_ANOTHER_SERVER:
+                _redirect(props);
             break;
+            default:
+                H4AMC_PRINT1("DISCONNECT %s\n", mqttTraits::rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(rcode)]);
+                _notify(H4AMC_SERVER_DISCONNECT, rcode);
+        }
+        _handleReasonString(props);
+        _state = H4AMC_DISCONNECTED;
+        if (_cbMQTTDisconnect)
+            _cbMQTTDisconnect();
+        _destroyClient();
+    }
+        break;
+    case AUTH:
+        //[ ]  Handle Auth request ...
+        // ...
+
+        break;
 #endif // MQTT5
-       default:
-            if(traits.isPublish()) _handlePublish(traits);
-            else {
-                _notify(H4AMC_BOGUS_PACKET,data[0]);
-                H4AMC_DUMP3(data,len);
+    default:
+        if(traits.isPublish()) _handlePublish(traits);
+        else {
+            _notify(H4AMC_BOGUS_PACKET,data[0]);
+            H4AMC_DUMP3(data,len);
+        }
+        break;
+    }
+#if MQTT5
+        //_handleReasonString();
+#endif
+        if (traits.next.second)
+        {
+            H4AMC_PRINT4("Let's go round again! %p %d\n", traits.next.first, traits.next.second);
+            if (n_handled < 10)
+                _handlePacket(traits.next.first, traits.next.second, n_handled + 1);
+            else
+            { // Relay off to another call tree to avoid memory exhaustion / stack overflow / watchdog reset
+                H4AMC_PRINT4("Too many packets to handle, saving stack to another call tree\n");
+                h4.queueFunction([=]()
+                                    { _handlePacket(traits.next.first, traits.next.second, 0); });
+            }
+        }
+}
+
+#if MQTT5
+void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
+{
+    if (_serverOptions) 
+        delete _serverOptions;
+    _serverOptions = new Server_Options;
+    for (auto &p : props.available_properties) {
+        switch (p) {
+        // case PROPERTY_SESSION_EXPIRY_INTERVAL:
+        //     _serverOptions->session_expiry_interval = props.getNumericProperty(p);
+        //     break;
+        case PROPERTY_RECEIVE_MAXIMUM:
+            _serverOptions->receive_max = props.getNumericProperty(p);
+            break;
+        case PROPERTY_MAXIMUM_QOS:
+            _serverOptions->maximum_qos = props.getNumericProperty(p);
+            break;
+        case PROPERTY_RETAIN_AVAILABLE:
+            _serverOptions->retain_available = props.getNumericProperty(p);
+            break;
+        case PROPERTY_MAXIMUM_PACKET_SIZE:
+            _serverOptions->maximum_packet_size = props.getNumericProperty(p);
+            break;
+        case PROPERTY_ASSIGNED_CLIENT_IDENTIFIER: // [ ] Any action?
+            H4AMC_PRINT1("Assigned ClientID=%s\n", props.getStringProperty(p).c_str());
+            break;
+        case PROPERTY_TOPIC_ALIAS_MAXIMUM:
+            _serverOptions->topic_alias_max = props.getNumericProperty(p);
+            break;
+        case PROPERTY_REASON_STRING:
+            H4AMC_PRINT1("Reason String=%s\n", props.getStringProperty(p).c_str());
+            break;
+        case PROPERTY_WILDCARD_SUBSCRIPTION_AVAILABLE:
+            _serverOptions->wildcard_subscription_available = props.getNumericProperty(p);
+            break;
+        case PROPERTY_SUBSCRIPTION_IDENTIFIER_AVAILABLE:
+            _serverOptions->subscriptions_identifiers_available = props.getNumericProperty(p);
+            break;
+        case PROPERTY_SHARED_SUBSCRIPTION_AVAILABLE:
+            _serverOptions->shared_subscription_available = props.getNumericProperty(p);
+            break;
+        case PROPERTY_SERVER_KEEP_ALIVE:
+        {
+            auto v = props.getNumericProperty(p);
+            if (v < _keepalive) {
+                // [x] Change the PINGREQ timer to the new value.
+                _startPinging(v);
             }
             break;
-       }
-            if (traits.next.second)
-            {
-                H4AMC_PRINT4("Let's go round again! %p %d\n", traits.next.first, traits.next.second);
-                if (n_handled < 10)
-                    _handlePacket(traits.next.first, traits.next.second, n_handled + 1);
-                else
-                { // Relay off to another call tree to avoid memory exhaustion / stack overflow / watchdog reset
-                    H4AMC_PRINT4("Too many packets to handle, saving stack to another call tree\n");
-                    h4.queueFunction([=]()
-                                     { _handlePacket(traits.next.first, traits.next.second, 0); });
-                }
-            }
+        }
+        break;
+        case PROPERTY_RESPONSE_INFORMATION:
+            _serverOptions->response_information = props.getStringProperty(p);
+            break;
+            // [ ] Handle Authentication Method and Data...
+/*                     case PROPERTY_AUTHENTICATION_METHOD:
+            _serverOptions->authentication_method = props.getStringProperty(p);
+            break;
+        case PROPERTY_AUTHENTICATION_DATA:
+            _serverOptions->authentication_data = props.getStringProperty(p);
+            break; */
+        default:
+            break;
+        }
+    }
+// #if H4AMC_DEBUG
+//     props.dump();
+// #endif
 }
+#endif
 
 void H4AsyncMQTT::_handlePublish(mqttTraits P){
     uint8_t qos=P.qos;
     uint16_t id=P.id;
     H4AMC_PRINT4("_handlePublish %s id=%d @ QoS%d R=%s DUP=%d PL@%08X PLEN=%d\n",P.topic.data(),id,qos,P.retain ? "true":"false",P.dup,P.payload,P.plen);
+    if (qos<2 || !_inbound.count(id)); // For QoS2, Only dispatch to the user once; _inbound holds the id of publishes under PUBREL from us to the server.
+        _hpDespatch(P);
+
     switch(qos){
-        case 0:
-            _hpDespatch(P);
-            break;
+        // case 0:
+        //     _hpDespatch(P);
+        //     break;
         case 1:
             { 
-                _hpDespatch(P);
+                // _hpDespatch(P);
                 PubackPacket pap(this,id);
             }
             break;
         case 2:
-        //  MQTT Spec. "method A"
             {
-                PublishPacket pub(this,P.topic.data(),qos,P.retain,P.payload,P.plen,0,id); // build and HOLD until PUBREL force dup=0
+                _inbound.insert(id);
+                // PublishPacket pub(this,P.topic.data(),qos,P.retain,P.payload,P.plen,0,id); // build and HOLD until PUBREL force dup=0
                 PubrecPacket pcpthis(this,id);
             }
             break;
@@ -478,16 +525,19 @@ void H4AsyncMQTT::_notify(int e,int info){
     if(_cbMQTTError) _cbMQTTError(e,info);
 }
 
-void H4AsyncMQTT::_resendPartialTxns(){
+void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handleSession
     // Check whether the messages are outdated...
-    // Or regularly resend them...?
+    // OR regularly resend them...?
     std::vector<uint16_t> morituri;
     for(auto const& o:_outbound){
         mqttTraits m=o.second;
         if(--(m.retries)){
             if(m.pubrec){
-                H4AMC_PRINT4("WE ARE PUBREC'D ATTEMPT @ QOS2: SEND %d PUBREL\n",m.id);
-                PubrelPacket prp(this,m.id);
+                if (!availSession) morituri.push_back(m.id);
+                else {
+                    H4AMC_PRINT4("WE ARE PUBREC'D ATTEMPT @ QOS2: SEND %d PUBREL\n",m.id);
+                    PubrelPacket prp(this,m.id);
+                }
             }
             else {
                 H4AMC_PRINT4("SET DUP & RESEND %d\n",m.id);
@@ -501,9 +551,17 @@ void H4AsyncMQTT::_resendPartialTxns(){
         }
     }
     for(auto const& i:morituri) _ACKoutbound(i);
+
+#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+    if (!availSession) {
+        // [x] Clean subscription id maps.
+        _subsResources.clear();
+        _packSubIds.clear();
+    }
+#endif
 }
 
-void H4AsyncMQTT::_runGuard(H4_FN_VOID f){
+void H4AsyncMQTT::_runGuard(H4AMC_FN_VOID f){
     if(_state==H4AMC_RUNNING) f();
     else _notify(0,H4AMC_USER_LOGIC_ERROR);
 }
@@ -551,10 +609,10 @@ std::string H4AsyncMQTT::errorstring(int e){
     #endif
 }
 
-void H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, bool retain MQTTPUBLISHPROPERTIES_API) { _runGuard([=]{ PublishPacket pub(this,topic,qos,retain,payload,length,0,0 MQTTPUBLISHPROPERTIES_CALL); }); }
+uint16_t H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { return _runGuard([=]{ PublishPacket pub(this,topic,qos,payload,length,opts_retain); return pub.getId(); }, (uint16_t)0); }
 
-void H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, bool retain MQTTPUBLISHPROPERTIES_API) { 
-    _runGuard([=]{ publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, retain MQTTPUBLISHPROPERTIES_CALL); });
+uint16_t H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { 
+    return publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, opts_retain);
 }
 
 void H4AsyncMQTT::setWill(const char* topic, uint8_t qos, bool retain, const char* payload) {
@@ -565,13 +623,22 @@ void H4AsyncMQTT::setWill(const char* topic, uint8_t qos, bool retain, const cha
     _willPayload = payload;
 }
 
-void H4AsyncMQTT::subscribe(const char* topic, uint8_t qos) { _runGuard([=]{ SubscribePacket sub(this,topic,qos); }); }
+uint32_t H4AsyncMQTT::subscribe(const char* topic, H4AMC_SubscriptionOptions opts_qos) { return _runGuard([=](void){ SubscribePacket sub(this,topic,opts_qos); return sub.getId(); }, (uint32_t)0); }
 
-void H4AsyncMQTT::subscribe(std::initializer_list<const char*> topix, uint8_t qos) { _runGuard([=]{ SubscribePacket sub(this,topix,qos); }); }
+uint32_t H4AsyncMQTT::subscribe(std::initializer_list<const char*> topix, H4AMC_SubscriptionOptions opts_qos) { _runGuard([=]{ SubscribePacket sub(this,topix,opts_qos); return sub.getId(); }, (uint32_t)0); }
 
 void H4AsyncMQTT::unsubscribe(const char* topic) {_runGuard([=]{ UnsubscribePacket usp(this,topic); }); }
 
 void H4AsyncMQTT::unsubscribe(std::initializer_list<const char*> topix) {_runGuard([=]{  UnsubscribePacket usp(this,topix); }); }
+#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+void H4AsyncMQTT::unsubscribe(uint32_t subscription_id) {
+    if (_subsResources.count(subscription_id)) { 
+        _runGuard([=]{ UnsubscribePacket usp(this, _subsResources[subscription_id].topix); });
+    } else {
+        _notify(0,H4AMC_USER_LOGIC_ERROR);
+    }
+}
+#endif
 //
 //
 //
@@ -582,7 +649,7 @@ void H4AsyncMQTT::dump(){
     for(auto & p:_outbound) p.second.dump();
 
     H4AMC_PRINT4("DUMP ALL %d PACKETS INBOUND\n",_inbound.size());
-    for(auto & p:_inbound) p.second.dump();
+    for(auto & p:_inbound) H4AMC_PRINT4("%d\t",p);
 
     H4AMC_PRINT4("\n");
 #endif

@@ -1,13 +1,13 @@
-#include"h4amc_config.h"
+#include "h4amc_common.h"
 #if MQTT5
-
+#include <Properties.h>
 #include <H4AsyncMQTT.h>
 void MQTT_Property_Numeric::print()
 {
 	if (is_malformed())
 		H4AMC_PRINT2("MALFORMED PROPERTY id=%u v=%u\n", id, value);
 	else
-		H4AMC_PRINT2("Property [%s] [%u]\n", mqttTraits::propnames[id], value);
+		H4AMC_PRINT2("\tProperty [%s] [%u]\n", mqttTraits::propnames[id], value);
 }
 
 uint8_t* MQTT_Property_Numeric::parse(uint8_t* data){
@@ -70,7 +70,7 @@ void MQTT_Property_Bool::print()
 	if (is_malformed())
 		H4AMC_PRINT2("MALFORMED PROPERTY id=%u v=%u\n", id, value);
 	else
-		H4AMC_PRINT2("Property [%s] [%s]\n", mqttTraits::propnames[id], value ? "true" : "false");
+		H4AMC_PRINT2("\tProperty [%s] [%s]\n", mqttTraits::propnames[id], value ? "true" : "false");
 }
 
 uint8_t* MQTT_Property_Numeric_VBI::parse (uint8_t* data){
@@ -117,6 +117,7 @@ uint8_t* MQTT_Property_Numeric_VBI::serialize(uint8_t* data){
 
 uint8_t* MQTT_Property_Binary::parse (uint8_t* data){
 	value = H4AMC_Helpers::decodeBinary(&data);
+	return data;
 }
 uint8_t* MQTT_Property_Binary::serialize(uint8_t* data, std::vector<uint8_t> value){
 	this->value = value;
@@ -144,7 +145,7 @@ uint8_t* MQTT_Property_String::serialize(uint8_t* data){
 	*data++	= id;
 	return H4AMC_Helpers::encodestring(data,value);
 }
-void MQTT_Property_String::print() { H4AMC_PRINT2("Property [%s] [%s]\n", mqttTraits::propnames[id], value.c_str()); }
+void MQTT_Property_String::print() { H4AMC_PRINT2("\tProperty [%s] [%s]\n", mqttTraits::propnames[id], value.c_str()); }
 
 uint8_t* MQTT_Property_StringPair::parse (uint8_t* data){
 	value.first = H4AMC_Helpers::decodestring(&data);
@@ -162,7 +163,7 @@ uint8_t* MQTT_Property_StringPair::serialize(uint8_t* data){
 	return data;
 }
 
-void MQTT_Property_StringPair::print() { H4AMC_PRINT2("Property [%s] [%s=%s]\n", mqttTraits::propnames[id], value.first.c_str(), value.second.c_str()); }
+void MQTT_Property_StringPair::print() { H4AMC_PRINT2("\tProperty [%s] [%s=%s]\n", mqttTraits::propnames[id], value.first.c_str(), value.second.c_str()); }
 
 
 bool MQTT_Properties::isAvailable(H4AMC_MQTT5_Property p) {
@@ -231,6 +232,7 @@ uint8_t* MQTT_Properties::serializeProperty(H4AMC_MQTT5_Property p, uint8_t *dat
 		H4AMC_PRINT1("Invalid numeric property: %02X",p);
 		break;
 	}
+	return data;
 }
 uint8_t* MQTT_Properties::serializeProperty(H4AMC_MQTT5_Property p, uint8_t *data, std::string value)
 {
@@ -251,6 +253,7 @@ uint8_t* MQTT_Properties::serializeProperty(H4AMC_MQTT5_Property p, uint8_t *dat
 		H4AMC_PRINT1("Invalid string property: %02X", p);
 		break;
 	}
+	return data;
 }
 uint8_t* MQTT_Properties::serializeProperty(H4AMC_MQTT5_Property p, uint8_t* data, std::vector<uint8_t> value)
 {
@@ -266,14 +269,24 @@ uint8_t* MQTT_Properties::serializeProperty(H4AMC_MQTT5_Property p, uint8_t* dat
 		H4AMC_PRINT1("Invalid binary property: %02X", p);
 		break;
 	}
+	return data;
 }
-uint8_t* MQTT_Properties::serializeUserProperty(uint8_t *data, MQTT_PROP_STRPAIR value)
+uint8_t* MQTT_Properties::serializeUserProperty(uint8_t *data, MQTT_PROP_STRPAIR& value)
 {
 	MQTT_Property_StringPair prop;
 	return prop.serialize(data, value);
 }
 
-std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*> MQTT_Properties::parseProperties(uint8_t* data) {
+uint8_t *MQTT_Properties::serializeUserProperties(uint8_t *data, USER_PROPERTIES_MAP &map)
+{
+	for (auto& item : map) {
+		MQTT_PROP_STRPAIR pair{item.first,item.second};
+		data=serializeUserProperty(data, pair);
+	}
+	return data;
+}
+
+MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 	uint32_t props_length = H4AMC_Helpers::decodeVariableByteInteger(&data);
 
 	while (props_length) {
@@ -339,7 +352,7 @@ std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*> MQTT_Properties::parseProperties(uint
 			data = prop.parse(data);
 			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length--;
-			numeric_props.push_back(std::make_unique<MQTT_Property_Numeric>(prop));
+			numeric_props.push_back(prop);
 			break;
 		}
 		//
@@ -351,7 +364,7 @@ std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*> MQTT_Properties::parseProperties(uint
 			data = prop.parse(data);
 			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length--;
-			numeric_props.push_back(std::make_unique<MQTT_Property_Numeric>(prop));
+			numeric_props.push_back(prop);
 			break;
 		}
 		//
@@ -366,7 +379,7 @@ std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*> MQTT_Properties::parseProperties(uint
 			data = prop.parse(data);
 			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length-=2;
-			numeric_props.push_back(std::make_unique<MQTT_Property_Numeric>(prop));
+			numeric_props.push_back(prop);
 			break;
 		}
 		//
@@ -378,7 +391,7 @@ std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*> MQTT_Properties::parseProperties(uint
 			data = prop.parse(data);
 			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length-=prop.length;
-			numeric_props.push_back(std::make_unique<MQTT_Property_Numeric>(prop));
+			numeric_props.push_back(prop);
 			break;
 		}
 		//
@@ -392,7 +405,7 @@ std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*> MQTT_Properties::parseProperties(uint
 			MQTT_Property_Numeric prop(prop_id);
 			data = prop.parse(data);
 			props_length-=4;
-			numeric_props.push_back(std::make_unique<MQTT_Property_Numeric>(prop));
+			numeric_props.push_back(prop);
 			break;
 		}
 		default:
@@ -401,21 +414,24 @@ std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*> MQTT_Properties::parseProperties(uint
 			return std::make_pair(REASON_PROTOCOL_ERROR,data);
 		}
 	}
+#if H4AMC_DEBUG
+	dump();
+#endif
 	return std::make_pair(REASON_SUCCESS,data);
 }
 
 std::string MQTT_Properties::getStringProperty(H4AMC_MQTT5_Property p) {
-	auto it = std::find_if(string_props.begin(),string_props.end(), [p](auto& sp){ return sp.id == p; });
+	auto it = std::find_if(string_props.begin(),string_props.end(), [p](const MQTT_Property_String& sp){ return sp.id == p; });
 	if (it == string_props.end())
 		return "";
 	return it->value;
 }
 
 uint32_t MQTT_Properties::getNumericProperty(H4AMC_MQTT5_Property p) { 
-	auto it = std::find_if(numeric_props.begin(),numeric_props.end(), [p](auto& sp){ return sp->id == p; });
+	auto it = std::find_if(numeric_props.begin(),numeric_props.end(), [p](const MQTT_Property_Numeric& np){ return np.id == p; });
 	if (it == numeric_props.end())
 		return 0;
-	return (*it)->is_malformed() ? 0 : (*it)->value;
+	return it->is_malformed() ? 0 : it->value;
 	}
 
 #endif // MQTT5
