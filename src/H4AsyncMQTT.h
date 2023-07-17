@@ -69,6 +69,7 @@ struct Server_Options {
     uint8_t maximum_qos=2;
     std::string response_information;
 };
+class H4Authenticator;
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
 
 struct SubscriptionResource {
@@ -233,7 +234,6 @@ struct WillMessage {
 #endif
 } ;
 
-class H4Authenticator;
 enum NetworkState : uint8_t {
     H4AMC_NETWORK_DISCONNECTED,
     H4AMC_NETWORK_CONNECTED
@@ -479,13 +479,49 @@ class H4AsyncMQTT {
                 void               dump(); // null if no debug
 };
 
+#if MQTT5
 class H4Authenticator {
-    enum H4AMC_AuthState : uint8_t {
-        AUTH_STATE_CONTINUE,
-        AUTH_STATE_SUCCESS
-    };
-            std::string     _method;
-            int             _state=0;
-
-    virtual H4AMC_AuthState         handle(std::vector<uint8_t> data)=0;
+    friend class H4AsyncMQTT;
+    friend class ConnectPacket;
+    public:
+                    H4Authenticator(std::string method) : _method(method){}
+    protected:
+                    std::string                     _method;
+    private:
+                    /* 
+                    * Callable on first AUTH appearance (CONNECT/RE_AUTH) 
+                    * Purpose: To fetch initial data and reset state (if any)
+                    */
+        virtual     H4AMC_AuthInformation           start()=0; // 
+        virtual     H4AMC_AuthInformation           handle(H4AMC_AuthInformation data)=0;
 };
+class SCRAM_Authenticator : protected H4Authenticator {
+            enum SCRAM_State : uint8_t {
+                START, // SENDS client first
+                CLIENT_FIRST_SENT,
+                CLIENT_FINAL_SENT,
+                // SERVER_FINAL_RECEIVED,
+                COMPLETE
+            } state;
+            std::vector<uint8_t> _client_first;
+                    H4AMC_AuthInformation           start() override;
+                    H4AMC_AuthInformation           handle(H4AMC_AuthInformation data) override;
+    public:
+            SCRAM_Authenticator(std::vector<uint8_t> client_first, std::string method_name="SCRAM-SHA-1") : H4Authenticator(method_name),  _client_first(client_first) {}
+
+};
+class KERBEROS_Authenticator : protected H4Authenticator {
+            enum KERBEROS_State : uint8_t {
+                START, // SENDS Empty data
+                STARTED,
+                INITIAL_CONTEXT_SENT, // SENDS Initial Context Token
+                REPLY_CONTEXT_HANDLED, // SENDS Empty data
+                // OUTCOME_RECEIVED,
+                COMPLETE
+
+            } state;
+
+                    H4AMC_AuthInformation           start() override;
+                    H4AMC_AuthInformation           handle(H4AMC_AuthInformation data) override;
+};
+#endif

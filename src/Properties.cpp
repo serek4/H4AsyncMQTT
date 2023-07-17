@@ -441,6 +441,14 @@ uint32_t MQTT_Properties::getNumericProperty(H4AMC_MQTT5_Property p) {
 	if (it == numeric_props.end())
 		return 0;
 	return it->is_malformed() ? 0 : it->value;
-	}
+}
+
+std::vector<uint8_t> MQTT_Properties::getBinaryProperty(H4AMC_MQTT5_Property p)
+{
+	auto it = std::find_if(binary_props.begin(),binary_props.end(), [p](const MQTT_Property_Binary& bp){ return bp.id == p; });
+	if (it != binary_props.end())
+		return it->value;
+	return std::vector<uint8_t>();
+}
 
 #endif // MQTT5

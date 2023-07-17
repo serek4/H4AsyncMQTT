@@ -201,6 +201,7 @@ public:
 											}
 				std::string 				getStringProperty(H4AMC_MQTT5_Property p);
     			uint32_t 					getNumericProperty(H4AMC_MQTT5_Property p);
+                std::vector<uint8_t>        getBinaryProperty(H4AMC_MQTT5_Property p);
 
 				bool 						isAvailable(H4AMC_MQTT5_Property p);
 

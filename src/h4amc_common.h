@@ -177,6 +177,7 @@ using H4AMC_MEM_POOL        =std::unordered_set	<uint8_t*>;
 using USER_PROPERTIES_MAP 	=std::unordered_map <std::string,std::string>;
 using H4AMC_FN_DYN_PROPS 	=std::function	<USER_PROPERTIES_MAP(PacketHeader)>;
 using H4AMC_cbProperties    =std::function	<void(USER_PROPERTIES_MAP)>; // in MQTT5
+using H4AMC_AuthInformation = std::pair<H4AMC_MQTT_ReasonCode, std::pair<std::string, std::vector<uint8_t>>>;
 #endif
 
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT

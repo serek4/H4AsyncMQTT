@@ -39,7 +39,7 @@ uint32_t Packet::__fetchSize(USER_PROPERTIES_MAP &props)
 {
     uint32_t total_size=0;
     for (auto& up : props) { 
-        total_size += 4 + up.first.size() + up.second.size();
+        total_size += 5 + up.first.size() + up.second.size(); // 1 PropID 2 keylen 2valuelen
     }
     return total_size;
 }
@@ -282,7 +282,6 @@ uint8_t* Packet::_applyfront(uint8_t* p_pos)
 
 ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     _bs=10;
-    // [ ] Integrate AUTH properties where available.
 
     _begin=[=]{
 #if MQTT5
@@ -299,7 +298,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
         if (props.payload_format_indicator) willPropLen += 2;
         if (props.message_expiry_interval)  willPropLen += 5;
         if (props.will_delay_interval)      willPropLen += 5;
-        if (props.content_type.length())    willPropLen += 3 + props.content_type.length();
+        if (props.content_type.length())    willPropLen += 3 + props.content_type.length(); // 3= 1 PropID + 2 Length
         if (props.response_topic.length())  willPropLen += 3 + props.response_topic.length();
         if (props.correlation_data.size())  willPropLen += 3 + props.correlation_data.size();
         if (props.user_properties.size())   willPropLen += __fetchPassedProps(props.user_properties);
@@ -334,7 +333,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
             protocol[7]|=PASSWORD;
         }
 #if MQTT5
-        // [ ] Add the properties to the length (property length) + store them
+        // [x] Add the properties to the length (property length) + store them
 
         // **Session Expiry Interval wont be used. 0 is the default value**
         _propertyLength += 3; // RECEIVE_MAXIMUM ID + 2 bytes
@@ -346,8 +345,14 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 #if MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION
         _propertyLength += 2; // REQUEST RESPONSE INFORMATION ID + 1 byte
 #endif
-        // [ ] _propertyLength += AUTH.method.length() + AUTH.data.length() + 2
         _propertyLength += _fetchUserProperties(dummy); // CALL ONLY ONCE per Packet::Packet()
+        if (_parent->_authenticator) {
+            auto ret = _parent->_authenticator->start();
+            _authmethod = ret.second.first;
+            _authdata = ret.second.second;
+            _propertyLength += 3 + _authmethod.length();
+            _propertyLength += 3 + _authdata.size();
+        }
         _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
 
         _properties=[=](uint8_t* p){
@@ -355,6 +360,10 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
             p = MQTT_Properties::serializeProperty(PROPERTY_RECEIVE_MAXIMUM, p, MQTT_CONNECT_RECEIVE_MAXIMUM);
             p = MQTT_Properties::serializeProperty(PROPERTY_MAXIMUM_PACKET_SIZE, p, MQTT_CONNECT_MAX_PACKET_SIZE);
             p = MQTT_Properties::serializeProperty(PROPERTY_TOPIC_ALIAS_MAXIMUM, p, MQTT_CONNECT_TOPIC_ALIAS_MAX);
+            if (_authmethod.length()) {
+                p = MQTT_Properties::serializeProperty(PROPERTY_AUTHENTICATION_METHOD, p, _authmethod);
+                p = MQTT_Properties::serializeProperty(PROPERTY_AUTHENTICATION_DATA, p, _authdata);
+            }
 #if MQTT_CONNECT_REQUEST_PROBLEM_INFORMATION
             p = MQTT_Properties::serializeProperty(PROPERTY_REQUEST_PROBLEM_INFORMATION, p, MQTT_CONNECT_REQUEST_PROBLEM_INFORMATION);
 #endif
@@ -362,8 +371,6 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
             p = MQTT_Properties::serializeProperty(PROPERTY_REQUEST_RESPONSE_INFORMATION, p, MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION);
 #endif
             p = _embedUserProperties(p, dummy);
-            // [ ] p = MQTT_Properties::serializeProperty(PROPERTY_AUTHENTICATION_METHOD, p, AUTH.method);
-            // [ ] p = MQTT_Properties::serializeProperty(PROPERTY_AUTHENTICATION_DATA, p, AUTH.data);
             return p;
         };
 
@@ -434,15 +441,14 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
 
                 if (props.payload_format_indicator) _propertyLength+=2; // 1B + 1
                 if (props.message_expiry_interval)  _propertyLength+=5; // 4B + 1
-                if (props.response_topic.length())  _propertyLength+=2+props.response_topic.length();
-                if (props.correlation_data.size())  _propertyLength+=2+props.correlation_data.size();
+                if (props.response_topic.length())  _propertyLength+=3+props.response_topic.length(); // 2 for size, 1 PropID
+                if (props.correlation_data.size())  _propertyLength+=3+props.correlation_data.size();
                 if (props.topic_alias)              _propertyLength+=3; // 2B + 1
+                if (props.content_type.length())    _propertyLength+=3+props.content_type.length();
                 
                 // No subscription ID from Client
                 _propertyLength += _fetchUserProperties(props.user_properties);
 
-                if (props.content_type.length())
-                    _bs+=2+props.content_type.length();
 
                 _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
                 _properties = [this, &props](uint8_t* p) {
@@ -457,6 +463,8 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
                         p=MQTT_Properties::serializeProperty(PROPERTY_CORRELATION_DATA, p, props.correlation_data);
                     if (props.topic_alias)
                         p=MQTT_Properties::serializeProperty(PROPERTY_TOPIC_ALIAS, p, props.topic_alias);
+                    if (props.content_type.length())
+                        p=MQTT_Properties::serializeProperty(PROPERTY_CONTENT_TYPE, p, props.content_type);
 
 
                     p=_embedUserProperties(p, props.user_properties);

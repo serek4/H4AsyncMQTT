@@ -320,9 +320,9 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     if(traits.malformed_packet)
     {
         H4AMC_PRINT1("Malformed packet! DISCONNECT\n");
-        // [ ] MAY Send a DISCONNECT packet to the server with a Reason Code of 0x81 (Malformed Packet)
-        // _disconnect(MALFORMED_PACKET);
-        _destroyClient();
+        // [x] MAY Send a DISCONNECT packet to the server with a Reason Code of 0x81 (Malformed Packet)
+        _protocolError(REASON_MALFORMED_PACKET);
+        // _destroyClient();
         return;
     }
     uint16_t id=traits.id;
@@ -375,9 +375,6 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
             break;
         default:
             H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT_ReasonCode>(rcode)]);
-            // [ ] Inform the user of the CONNACK packet Reason Code when a failure occurs. (Not needed)
-            // if (_cbProtocolEvent) _cbProtocolEvent(CONNECT_FAIL, static_cast<H4AMC_MQTT_ReasonCode>(rcode), traits.props);
-                
 #else
         default: 
             H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[rcode]);
@@ -441,8 +438,32 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     }
         break;
     case AUTH:
-        //[ ]  Handle Auth request ...
+        //[x]  Handle Auth request ...
         // ...
+        switch (rcode) {
+        case REASON_SUCCESS:
+        case REASON_CONTINUE_AUTHENTICATION:
+            if (_authenticator){
+                auto method = props.getStringProperty(PROPERTY_AUTHENTICATION_METHOD);
+                auto data = props.getBinaryProperty(PROPERTY_AUTHENTICATION_DATA);
+                auto ret = _authenticator->handle(std::make_pair(static_cast<H4AMC_MQTT_ReasonCode>(rcode),std::make_pair(method,data)));
+                auto& authreason = ret.first;
+                auto& authmethod = ret.second.first;
+                auto& authdata = ret.second.second;
+                // [ ] AuthenticationPacket auth(reason,method,data)
+
+            }
+            break;
+            
+        case REASON_RE_AUTHENTICATE:
+            H4AMC_PRINT2("ONLY CLIENT CAN REAUTH!\n");
+            _protocolError(REASON_PROTOCOL_ERROR);
+            break;
+        default:
+            H4AMC_PRINT2("UNKNOWN AUTH REASON %02X\n", rcode);
+            _protocolError(REASON_PROTOCOL_ERROR);
+            break;
+        }
 
         break;
 #endif // MQTT5
@@ -451,6 +472,11 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         else {
             _notify(H4AMC_BOGUS_PACKET,data[0]);
             H4AMC_DUMP3(data,len);
+#if MQTT5
+            _protocolError(REASON_MALFORMED_PACKET);
+#else
+            // disconnect();
+#endif
         }
         break;
     }
@@ -788,3 +814,43 @@ bool H4AsyncMQTT::secureTLS(const u8_t *ca, size_t ca_len, const u8_t *privkey, 
 	return false;
 #endif
 }
+#if MQTT5
+H4AMC_AuthInformation SCRAM_Authenticator::start()
+{
+    state=CLIENT_FIRST_SENT;
+	return H4AMC_AuthInformation(std::make_pair(REASON_CONTINUE_AUTHENTICATION, std::make_pair(_method, _client_first)));
+}
+
+H4AMC_AuthInformation SCRAM_Authenticator::handle(H4AMC_AuthInformation data)
+{
+    auto rcode = data.first;
+    H4AMC_AuthInformation result;
+    if (rcode == REASON_CONTINUE_AUTHENTICATION) {
+        auto method = data.second.first;
+        auto authdata = data.second.second;
+        if (method!=_method){
+            // ERROR!
+        }
+
+        switch(state) {
+            case CLIENT_FIRST_SENT:
+            // [ ] Digest authdata 
+            // [ ] Return result
+                state=CLIENT_FINAL_SENT;
+                break;
+            case CLIENT_FINAL_SENT:
+            // [ ] Digest authdata 
+            // [ ] Return result
+                state=COMPLETE;
+                break;
+            default:
+                break;
+        }
+        
+    } else /* if (rcode == REASON_SUCCESS) */ {
+        // ERROR!
+    }
+	return result;
+}
+
+#endif
