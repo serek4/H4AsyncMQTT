@@ -33,10 +33,8 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 
 #include<Arduino.h>
 #include<H4AsyncTCP.h>
-#include"h4amc_config.h"
 #include"h4amc_common.h"
 #include"Properties.h"
-#include <set>
 
 
 enum H4AMC_MQTT_CNX_FLAG : uint8_t {
@@ -176,7 +174,7 @@ class mqttTraits {
                 
 #if H4AMC_DEBUG
 #if MQTT5
-        static std::map<H4AMC_MQTT5_ReasonCode,char*> rcnames;
+        static std::map<H4AMC_MQTT_ReasonCode,char*> rcnames;
         static std::map<H4AMC_MQTT5_Property,char*> propnames;
 #endif
         static std::map<uint8_t,char*> pktnames;
@@ -226,7 +224,7 @@ class H4AsyncMQTT {
                 H4Authenticator*    _authenticator=nullptr;
                 std::map<uint16_t, std::string> _rx_topic_alias;
                 // std::map<std::string, uint16_t> _tx_topic_alias;
-                std::vector<std::string> _tx_topic_alias;
+                std::vector<std::string> _tx_topic_alias; // vector<string> because we manage it.
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
                 
                 H4AMC_SUBRES_MAP    _subsResources;
@@ -270,6 +268,7 @@ class H4AsyncMQTT {
                 void                _connect();
                 void                _destroyClient();
 #if MQTT5
+                void                _protocolError(H4AMC_MQTT_ReasonCode reason);
                 void                _handleConnackProps(MQTT_Properties& props);
                 void                _redirect(MQTT_Properties& props);
                 void                _addUserProp(PacketHeader header, std::shared_ptr<USER_PROPERTIES_MAP> nv) {
@@ -300,7 +299,7 @@ class H4AsyncMQTT {
                 H4AsyncClient*      _h4atClient;
         H4AsyncMQTT();
                 void                connect(const char* url,const char* auth="",const char* pass="",const char* clientId="",bool clean=true);
-                void                disconnect();
+                void                disconnect(H4AMC_MQTT_ReasonCode reason=REASON_NORMAL_DISCONNECTION);
         static  std::string         errorstring(int e);
                 std::string         getClientId(){ return _clientId; }
                 size_t inline       getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - H4T_HEAP_SAFETY) / 2 ; }

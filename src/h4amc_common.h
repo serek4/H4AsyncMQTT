@@ -9,6 +9,7 @@
 #include <vector>
 #include <memory>
 #include <H4Tools.h>
+#include <set>
 // #if __cplusplus < 201400
 // namespace std
 // {
@@ -88,7 +89,7 @@ enum PacketHeader :uint8_t {
 #endif
 };
 #if MQTT5
-enum H4AMC_MQTT5_ReasonCode : uint8_t {
+enum H4AMC_MQTT_ReasonCode : uint8_t {
     REASON_SUCCESS                          = 0x00, // | CONNACK, PUBACK, PUBREC, PUBREL, PUBCOMP, UNSUBACK, AUTH (S)
     REASON_NORMAL_DISCONNECTION             = 0x00, // | DISCONNECT (C/S)
     REASON_GRANTED_QOS_0                    = 0x00, // | SUBACK
@@ -143,7 +144,11 @@ enum Subscription_Options {
     SUBSCRIPTION_OPTION_RETAIN_HANDLING_SHIFT         = 4
 };
 
-
+#else // MQTT5
+enum H4AMC_MQTT_ReasonCode : uint8_t {
+    REASON_SUCCESS                          = 0x00,
+    REASON_NORMAL_DISCONNECTION             = 0x00
+}
 #endif // MQTT5
 
 

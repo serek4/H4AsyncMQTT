@@ -5,7 +5,7 @@
 #include <memory>
 
 using MQTT_PROP_STRPAIR = std::pair<std::string,std::string>;
-using MQTT_PROP_PARSERET= std::pair<H4AMC_MQTT5_ReasonCode,uint8_t*>;
+using MQTT_PROP_PARSERET= std::pair<H4AMC_MQTT_ReasonCode,uint8_t*>;
 /* 
     Although the Property Identifier is defined as a Variable Byte Integer, in this version of the
     500

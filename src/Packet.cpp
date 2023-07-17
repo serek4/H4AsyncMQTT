@@ -251,6 +251,7 @@ void Packet::_stringblock(const std::string& s){
 
 ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     _bs=10;
+    // [ ] Integrate AUTH properties where available.
 
     _begin=[=]{
 #if MQTT5
@@ -372,7 +373,8 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
                 _controlcode|=flags;
 #if MQTT5
             // [x] Add the properties to the length (property length) + store them
-
+                // [ ] ProposeTXAlias() and save it - on PUBACK/PUBREC confirmTXAlias()
+                // [ ] Make assigning topic aliases available only for QoS1 and QoS2 only. 
                 if (_parent->availableTXAlias(topic)) {
                     props.topic_alias = _parent->getTXAlias(topic);
                 } else if (_parent->availableTXAliasSpace()) {

@@ -224,6 +224,7 @@ void H4AsyncMQTT::_connect(){
 }
 
 void H4AsyncMQTT::_destroyClient() {
+    H4AMC_PRINT1("DESTROY CLIENT\n");
     if (_h4atClient && _h4atClient->connected()) {
         _h4atClient->close();
     }
@@ -324,16 +325,16 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         case REASON_USE_ANOTHER_SERVER:
             _redirect(*(traits.properties));
             break;
-            default:
-                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(rcode)]);
-                // [ ] Inform the user of the CONNACK packet Reason Code when a failure occurs. (Not needed)
-                // if (_cbProtocolEvent) _cbProtocolEvent(CONNECT_FAIL, static_cast<H4AMC_MQTT5_ReasonCode>(rcode), traits.props);
+        default:
+            H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT_ReasonCode>(rcode)]);
+            // [ ] Inform the user of the CONNACK packet Reason Code when a failure occurs. (Not needed)
+            // if (_cbProtocolEvent) _cbProtocolEvent(CONNECT_FAIL, static_cast<H4AMC_MQTT_ReasonCode>(rcode), traits.props);
                 
 #else
-            default: 
-                H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[rcode]);
+        default: 
+            H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[rcode]);
 #endif
-                _notify(H4AMC_CONNECT_FAIL, rcode);
+            _notify(H4AMC_CONNECT_FAIL, rcode);
             break;
         }
     }
@@ -381,7 +382,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                 _redirect(props);
             break;
             default:
-                H4AMC_PRINT1("DISCONNECT %s\n", mqttTraits::rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(rcode)]);
+                H4AMC_PRINT1("DISCONNECT %s\n", mqttTraits::rcnames[static_cast<H4AMC_MQTT_ReasonCode>(rcode)]);
                 _notify(H4AMC_SERVER_DISCONNECT, rcode);
         }
         _handleReasonString(props);
@@ -423,6 +424,12 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
 }
 
 #if MQTT5
+void H4AsyncMQTT::_protocolError(H4AMC_MQTT_ReasonCode reason)
+{
+    H4AMC_PRINT1("Protocol Error %u:%s\n", reason, mqttTraits::rcnames[reason]);
+    disconnect(reason);
+    _destroyClient();
+}
 void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
 {
     if (_serverOptions) 
@@ -497,6 +504,35 @@ void H4AsyncMQTT::_handlePublish(mqttTraits P){
     uint8_t qos=P.qos;
     uint16_t id=P.id;
     H4AMC_PRINT4("_handlePublish %s id=%d @ QoS%d R=%s DUP=%d PL@%08X PLEN=%d\n",P.topic.data(),id,qos,P.retain ? "true":"false",P.dup,P.payload,P.plen);
+#if MQTT5
+    if (P.properties && P.properties->isAvailable(PROPERTY_TOPIC_ALIAS)) {
+        // Register/Update topic alias
+        uint16_t alias = P.properties->getNumericProperty(PROPERTY_TOPIC_ALIAS);
+        H4AMC_PRINT2("RECEIVED TOPIC ALIAS %d EXIST %d\n", alias, _rx_topic_alias.count(alias));
+
+        if (_rx_topic_alias.count(alias) && !P.topic.length()) 
+        {
+            H4AMC_PRINT2("FETCHING TOPIC %s\n", _rx_topic_alias[alias].c_str());
+            P.topic = _rx_topic_alias[alias];
+        } 
+        else if (alias && alias < MQTT5_RX_TOPIC_ALIAS_MAXIMUM && P.topic.length()) // There's Topic and a valid alias
+        { 
+            H4AMC_PRINT2("ASSIGNING TOPIC ALIAS %d to %s\n", alias, P.topic.c_str());
+            _rx_topic_alias[alias] = P.topic;
+        } 
+        else if (P.topic.length()) // It's an invalid alias (alias==0 OR Topic Alias Exceeded)
+        {
+            H4AMC_PRINT2("VALID TOPIC - INVALID ALIAS\n");
+            _protocolError(REASON_TOPIC_ALIAS_INVALID);
+            return;
+        } // else NO Topic Alias Mapping found (P.topic.length()==0)
+    }
+    if (!P.topic.length()) {
+        H4AMC_PRINT1("NO Topic Alias Mapping Exist!\n");
+        _protocolError(REASON_PROTOCOL_ERROR);
+        return;
+    }
+#endif
     if (qos<2 || !_inbound.count(id)); // For QoS2, Only dispatch to the user once; _inbound holds the id of publishes under PUBREL from us to the server.
         _hpDespatch(P);
 
@@ -588,13 +624,12 @@ void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,cons
     } else if(_cbMQTTError) _cbMQTTError(ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
 }
 
-void H4AsyncMQTT::disconnect() {
-    static uint8_t G[] =
-#if MQTT5
-        {DISCONNECT, 0x4}; //Reason Code 0x04 (Disconnect with Will Message)
-#else
-        {DISCONNECT, 0};
-#endif
+void H4AsyncMQTT::disconnect(H4AMC_MQTT_ReasonCode reason) {
+    static uint8_t G[] = {DISCONNECT, reason}; 
+    // [ ] Properties...
+        // Session expiry interval
+        // Reason String
+        // User Property
     H4AMC_PRINT1("USER DCX\n");
     if(_state==H4AMC_RUNNING) _h4atClient->TX(G,2,false);
     else _h4atClient->_cbError(ERR_CONN,H4AMC_USER_LOGIC_ERROR);

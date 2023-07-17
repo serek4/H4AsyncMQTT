@@ -292,6 +292,7 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 	while (props_length) {
 		auto prop_id = static_cast<H4AMC_MQTT5_Property>(*data++);
 		props_length--;
+		H4AMC_PRINT4("Parse PROP %02X len %d\n", prop_id, props_length);
 		available_properties.push_back(prop_id);
 		switch (prop_id)
 		{
@@ -306,9 +307,10 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 		case PROPERTY_SERVER_REFERENCE:
 		case PROPERTY_REASON_STRING:
 		{
+			H4AMC_PRINT4("PARSE STRING PROP\n");
 			MQTT_Property_String prop(prop_id);
 			data = prop.parse(data);
-			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
+			if (prop.is_malformed()) return {H4AMC_MQTT_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length-=(2 + prop.value.length());
 			string_props.push_back(prop);
 			break;
@@ -319,9 +321,10 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 		case PROPERTY_CORRELATION_DATA:
 		case PROPERTY_AUTHENTICATION_DATA:
 		{
+			H4AMC_PRINT4("PARSE BINARY PROP\n");
 			MQTT_Property_Binary prop(prop_id);
 			data = prop.parse(data);
-			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
+			if (prop.is_malformed()) return {H4AMC_MQTT_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length-=(2 + prop.value.size());
 
 			binary_props.push_back(prop);
@@ -329,9 +332,10 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 		}
 		case PROPERTY_USER_PROPERTY:
 		{
+			H4AMC_PRINT4("PARSE USER PROP\n");
 			MQTT_Property_StringPair prop;
 			data = prop.parse(data);
-			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
+			if (prop.is_malformed()) return {H4AMC_MQTT_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length-=(4 + prop.value.first.length() + prop.value.second.length());
 			user_properties[prop.value.first] = prop.value.second;
 			available_properties.pop_back(); // Separate API for this.
@@ -348,9 +352,10 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 		case PROPERTY_SHARED_SUBSCRIPTION_AVAILABLE:
 		case PROPERTY_PAYLOAD_FORMAT_INDICATOR:
 		{
+			H4AMC_PRINT4("PARSE BOOL PROP\n");
 			MQTT_Property_Bool prop(prop_id);
 			data = prop.parse(data);
-			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
+			if (prop.is_malformed()) return {H4AMC_MQTT_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length--;
 			numeric_props.push_back(prop);
 			break;
@@ -360,9 +365,10 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 		//
 		case PROPERTY_MAXIMUM_QOS:
 		{
+			H4AMC_PRINT4("PARSE 1B PROP\n");
 			MQTT_Property_Numeric_1B prop(prop_id);
 			data = prop.parse(data);
-			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
+			if (prop.is_malformed()) return {H4AMC_MQTT_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length--;
 			numeric_props.push_back(prop);
 			break;
@@ -375,9 +381,10 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 		case PROPERTY_TOPIC_ALIAS_MAXIMUM:
 		case PROPERTY_TOPIC_ALIAS:
 		{
+			H4AMC_PRINT4("PARSE 2B PROP\n");
 			MQTT_Property_Numeric_2B prop(prop_id);
 			data = prop.parse(data);
-			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
+			if (prop.is_malformed()) return {H4AMC_MQTT_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length-=2;
 			numeric_props.push_back(prop);
 			break;
@@ -387,9 +394,10 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 		//
 		case PROPERTY_SUBSCRIPTION_IDENTIFIER:
 		{
+			H4AMC_PRINT4("PARSE VBI PROP\n");
 			MQTT_Property_Numeric_VBI prop(prop_id);
 			data = prop.parse(data);
-			if (prop.is_malformed()) return {H4AMC_MQTT5_ReasonCode::REASON_MALFORMED_PACKET, data};
+			if (prop.is_malformed()) return {H4AMC_MQTT_ReasonCode::REASON_MALFORMED_PACKET, data};
 			props_length-=prop.length;
 			numeric_props.push_back(prop);
 			break;
@@ -402,6 +410,7 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 		case PROPERTY_WILL_DELAY_INTERVAL:
 		case PROPERTY_MAXIMUM_PACKET_SIZE:
 		{
+			H4AMC_PRINT4("PARSE 4B PROP\n");
 			MQTT_Property_Numeric prop(prop_id);
 			data = prop.parse(data);
 			props_length-=4;

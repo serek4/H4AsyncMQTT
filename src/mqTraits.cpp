@@ -53,7 +53,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
     };
 
 #if MQTT5
-    std::map<H4AMC_MQTT5_ReasonCode,char*> mqttTraits::rcnames {
+    std::map<H4AMC_MQTT_ReasonCode,char*> mqttTraits::rcnames {
         {REASON_SUCCESS, "Success/Normal disconnection/QoS0"},
         {REASON_GRANTED_QOS_0, "Granted QoS 0"},
         {REASON_GRANTED_QOS_1, "Granted QoS 1"},
@@ -315,7 +315,7 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
         case CONNACK:
             {
 #if MQTT5
-                H4AMC_PRINT3("  %s%s\n", reasoncode?"Error: " : "", rcnames[static_cast<H4AMC_MQTT5_ReasonCode>(reasoncode)]);
+                H4AMC_PRINT3("  %s%s\n", reasoncode?"Error: " : "", rcnames[static_cast<H4AMC_MQTT_ReasonCode>(reasoncode)]);
 #else
                 H4AMC_PRINT3("  %s%s\n", reasoncode?"Error: " : "", connacknames[reasoncode]);
 #endif
