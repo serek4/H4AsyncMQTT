@@ -35,35 +35,39 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #if MQTT5
 USER_PROPERTIES_MAP dummy;
 
-void Packet::__fetchSize(USER_PROPERTIES_MAP &props)
+uint32_t Packet::__fetchSize(USER_PROPERTIES_MAP &props)
 {
+    uint32_t total_size=0;
     for (auto& up : props) { 
-        _propertyLength += 4 + up.first.size() + up.second.size();
+        total_size += 4 + up.first.size() + up.second.size();
     }
+    return total_size;
 }
 
-void Packet::__fetchPassedProps(USER_PROPERTIES_MAP &props)
+uint32_t Packet::__fetchPassedProps(USER_PROPERTIES_MAP &props)
 {
-    __fetchSize(props);
+    return __fetchSize(props);
 }
 
-void Packet::__fetchStaticProps()
+uint32_t Packet::__fetchStaticProps()
 {
     auto header = static_cast<PacketHeader>(_controlcode);
     if (_parent->_user_static_props.count(header)){
         auto u_props = *(_parent->_user_static_props[header]);
-        __fetchSize(u_props);
+        return __fetchSize(u_props);
     }
+    return 0;
 }
 
-void Packet::__fetchDynamicProps()
+uint32_t Packet::__fetchDynamicProps()
 {
     auto header = static_cast<PacketHeader>(_controlcode);
     if (_parent->_user_dynamic_props.count(header)) {
         auto cbDynamic = _parent->_user_dynamic_props[header];
         _dynProps = std::make_shared<USER_PROPERTIES_MAP>(cbDynamic(header));
-        __fetchSize(*_dynProps);
+        return __fetchSize(*_dynProps);
     }
+    return 0;
 }
 
 uint8_t *Packet::__embedProps(uint8_t* p, USER_PROPERTIES_MAP &props)
@@ -200,7 +204,7 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
 #endif // MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
 #if MQTT5
         // [x] Add the properties to the length (property length) + store them
-        _fetchUserProperties(opts.getUserProperties());
+        _propertyLength += _fetchUserProperties(opts.getUserProperties());
 
         _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
 
@@ -225,10 +229,10 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
     };
 
     _protocolPayload=[=, &opts](uint8_t* p,uint8_t* base){
-        for(auto const& t:topics){
+        for(auto const& t:topics){ // not blocks because it's passed already.
             size_t n=t.size();
             p=_poke16(p,n);
-            memcpy(p,t.data(),n);
+            if (n) memcpy(p,t.data(),n);
             p+=n;
             if(_controlcode==SUBSCRIBE) *p=opts.getQos();
 #if MQTT5
@@ -255,6 +259,27 @@ void Packet::_stringblock(const std::string& s){
     _blox.push(mbx((uint8_t*) s.data(),sz,s.length())); // s.length() for copy.
 }
 
+uint8_t *Packet::_serializeblock(uint8_t* p_pos, mbx block)
+{
+    uint16_t n=block.len;
+    uint8_t* p=block.data;
+    p_pos=_poke16(p_pos,n);
+    if (n) // For empty strings
+        memcpy(p_pos,p,n);
+    p_pos+=n;
+	return p_pos;
+}
+uint8_t* Packet::_applyfront(uint8_t* p_pos)
+{
+    if (_blox.size()){
+        mbx tmp = _blox.front();
+        p_pos = _serializeblock(p_pos, tmp);
+        tmp.clear();
+        _blox.pop();
+    }
+    return p_pos;
+}
+
 ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     _bs=10;
     // [ ] Integrate AUTH properties where available.
@@ -265,14 +290,39 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 #else
         if(_parent->_cleanSession) protocol[7]|=CLEAN_SESSION;
 #endif
-        _stringblock(_parent->_clientId);
         // clientID --> Will properties --> wil lTopic --> willPayload --> username --> password
-        if(_parent->_willTopic.size()){
-            if(_parent->_willRetain) protocol[7]|=WILL_RETAIN;
-            if(_parent->_willQos) protocol[7]|=(_parent->_willQos==1) ? WILL_QOS1:WILL_QOS2;
-            // _stringblock(""_parent->_willProperties"");
-            _stringblock(_parent->_willTopic);
-            _stringblock(_parent->_willPayload);
+        _stringblock(_parent->_clientId);
+        if(_parent->_will.topic.size()){
+#if MQTT5
+        uint32_t willPropLen=0;
+        auto& props = _parent->_will.props;
+        if (props.payload_format_indicator) willPropLen += 2;
+        if (props.message_expiry_interval)  willPropLen += 5;
+        if (props.will_delay_interval)      willPropLen += 5;
+        if (props.content_type.length())    willPropLen += 3 + props.content_type.length();
+        if (props.response_topic.length())  willPropLen += 3 + props.response_topic.length();
+        if (props.correlation_data.size())  willPropLen += 3 + props.correlation_data.size();
+        if (props.user_properties.size())   willPropLen += __fetchPassedProps(props.user_properties);
+        _bs += willPropLen + H4AMC_Helpers::varBytesLength(willPropLen);
+
+        if (willPropLen) {
+            _willproperties = [&, willPropLen](uint8_t* p) {
+                p=H4AMC_Helpers::encodeVariableByteInteger(p, willPropLen);
+                if (props.payload_format_indicator) p = MQTT_Properties::serializeProperty(PROPERTY_PAYLOAD_FORMAT_INDICATOR, p, props.payload_format_indicator);
+                if (props.message_expiry_interval)  p = MQTT_Properties::serializeProperty(PROPERTY_MESSAGE_EXPIRY_INTERVAL, p, props.message_expiry_interval);
+                if (props.will_delay_interval)      p = MQTT_Properties::serializeProperty(PROPERTY_WILL_DELAY_INTERVAL, p, props.will_delay_interval);
+                if (props.content_type.length())    p = MQTT_Properties::serializeProperty(PROPERTY_CONTENT_TYPE, p, props.content_type);
+                if (props.response_topic.length())  p = MQTT_Properties::serializeProperty(PROPERTY_RESPONSE_TOPIC, p, props.response_topic);
+                if (props.correlation_data.size())  p = MQTT_Properties::serializeProperty(PROPERTY_CORRELATION_DATA, p, props.correlation_data);
+                if (props.user_properties.size())   p = __embedProps(p, props.user_properties);
+                return p;
+            };
+        }
+#endif
+            if(_parent->_will.retain) protocol[7]|=WILL_RETAIN;
+            if(_parent->_will.qos) protocol[7]|=(_parent->_will.qos==1) ? WILL_QOS1:WILL_QOS2;
+            _stringblock(_parent->_will.topic);
+            _stringblock(_parent->_will.payload);
             protocol[7]|=WILL;
         }
         if(_parent->_username.size()){
@@ -297,7 +347,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
         _propertyLength += 2; // REQUEST RESPONSE INFORMATION ID + 1 byte
 #endif
         // [ ] _propertyLength += AUTH.method.length() + AUTH.data.length() + 2
-        _fetchUserProperties(dummy); // CALL ONLY ONCE per Packet::Packet()
+        _propertyLength += _fetchUserProperties(dummy); // CALL ONLY ONCE per Packet::Packet()
         _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
 
         _properties=[=](uint8_t* p){
@@ -330,20 +380,14 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     };
 
     _protocolPayload=[=](uint8_t* p_pos,uint8_t* base){
-        // [ClientID] --> ((Will properties)) --> [willTopic --> willPayload --> username --> password]
-        while(!_blox.empty()){ // [ ] TODO: INSERT Will properties...
-            mbx tmp=_blox.front();
-            uint16_t n=tmp.len;
-            uint8_t* p=tmp.data;
-            p_pos=_poke16(p_pos,n);
-            if (n) // For empty topix; of topic alias.
-                memcpy(p_pos,p,n);
-            p_pos+=n;
-            tmp.clear();
-            _blox.pop();
-        }
-        mqttTraits T(base,_bs);
-        H4AsyncMQTT::_outbound[0]=T;  // To be released on CONNACK
+        // [ClientID] --> [Will properties] --> [willTopic -> willPayload -> username -> password]
+        p_pos = _applyfront(p_pos); // ClientID
+#if MQTT5
+        p_pos = _willproperties(p_pos);
+#endif
+        while(!_blox.empty()) p_pos = _applyfront(p_pos);
+        // mqttTraits T(base,_bs);
+        // H4AsyncMQTT::_outbound[0]=T;  // To be released on CONNACK
     };
     _build();
 }
@@ -388,19 +432,14 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
                     props.topic_alias = _parent->assignTXAlias(topic);
                 }
 
-                if (props.payload_format_indicator)
-                    _propertyLength+=2; // 1B + 1
-                if (props.message_expiry_interval)
-                    _propertyLength+=5; // 4B + 1
-                if (props.response_topic.length())
-                    _propertyLength+=2+props.response_topic.length();
-                if (props.correlation_data.size())
-                    _propertyLength+=2+props.correlation_data.size();
-                if (props.topic_alias)
-                    _propertyLength+=3; // 2B + 1
+                if (props.payload_format_indicator) _propertyLength+=2; // 1B + 1
+                if (props.message_expiry_interval)  _propertyLength+=5; // 4B + 1
+                if (props.response_topic.length())  _propertyLength+=2+props.response_topic.length();
+                if (props.correlation_data.size())  _propertyLength+=2+props.correlation_data.size();
+                if (props.topic_alias)              _propertyLength+=3; // 2B + 1
                 
                 // No subscription ID from Client
-                _fetchUserProperties(props.user_properties);
+                _propertyLength += _fetchUserProperties(props.user_properties);
 
                 if (props.content_type.length())
                     _bs+=2+props.content_type.length();
@@ -426,14 +465,7 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
 #endif
             };
             _varHeader=[this](uint8_t* p_pos){ // To embed the Topic name.
-                mbx tmp=_blox.front();
-                uint16_t n=tmp.len;
-                uint8_t* p=tmp.data;
-                p_pos=_poke16(p_pos,n);
-                memcpy(p_pos,p,n);
-                p_pos+=n;
-                tmp.clear();
-                _blox.pop();
+                p_pos = _applyfront(p_pos);
                 if(_hasId) p_pos=_poke16(p_pos,_id);
                 // Properties...
 #if MQTT5

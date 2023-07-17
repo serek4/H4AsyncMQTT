@@ -126,6 +126,21 @@ public:
 #endif
 };
 
+class H4AMC_WillOptions {
+    bool retained;
+
+#if MQTT5
+    MQTT5WillProperties props;
+#endif
+public:
+    H4AMC_WillOptions(bool retained = false) : retained(retained) {}
+
+    bool getRetained() { return retained; }
+#if MQTT5
+    MQTT5WillProperties& getProperties() { return props; }
+#endif
+};
+
 class mqttTraits {             
                 std::string     _decodestring(uint8_t** p);
         inline  uint16_t        _peek16(uint8_t* p){ return (*(p+1))|(*p << 8); }
@@ -208,6 +223,16 @@ enum {
     H4AMC_FATAL
 };
 
+struct WillMessage {
+    std::string         payload;
+    uint8_t             qos=0;
+    bool                retain=false;
+    std::string         topic;
+#if MQTT5
+    MQTT5WillProperties props;
+#endif
+} ;
+
 class H4Authenticator;
 enum NetworkState : uint8_t {
     H4AMC_NETWORK_DISCONNECTED,
@@ -262,15 +287,13 @@ class H4AsyncMQTT {
                 std::string         _password;
                 std::string         _url;
                 std::string         _username;
-                std::string         _willPayload;
-                uint8_t             _willQos=0;
-                bool                _willRetain=false;
-                std::string         _willTopic;
-
+                WillMessage         _will;
+#if H4AT_TLS
                 std::vector<uint8_t> _caCert;
                 std::vector<uint8_t> _privkey;
                 std::vector<uint8_t> _privkeyPass;
                 std::vector<uint8_t> _clientCert;
+#endif
                
                 void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
                 void                _ACKoutbound(uint16_t id){ _ACK(&_outbound,id,false); }
@@ -398,7 +421,7 @@ class H4AsyncMQTT {
                     else _notify(H4AMC_X_INVALID_LENGTH,len);
                 }
 //                void               setKeepAlive(uint16_t keepAlive){ _keepalive=keepAlive; }
-                void               setWill(const char* topic, uint8_t qos, bool retain, const char* payload = nullptr); // [ ] Add Will Properties
+                void               setWill(const char* topic, uint8_t qos, const char* payload = nullptr, H4AMC_WillOptions opts_retain={});
                 /**! subscribe
                  *              For MQTT v3.3, one can pass QoS value directly.
                  * \return 

@@ -43,18 +43,20 @@ class Packet {
 
                 std::shared_ptr<USER_PROPERTIES_MAP> _dynProps;
 
-                void             __fetchSize(USER_PROPERTIES_MAP& props);
-                void             __fetchPassedProps(USER_PROPERTIES_MAP& props);
-                void             __fetchStaticProps();
-                void             __fetchDynamicProps();
+                uint32_t         __fetchSize(USER_PROPERTIES_MAP& props);
+                uint32_t         __fetchPassedProps(USER_PROPERTIES_MAP& props);
+                uint32_t         __fetchStaticProps();
+                uint32_t         __fetchDynamicProps();
                 uint8_t*         __embedProps(uint8_t* p, USER_PROPERTIES_MAP& props);
                 uint8_t*         __embedPassedProps(uint8_t* p, USER_PROPERTIES_MAP& props);
                 uint8_t*         __embedStaticProps(uint8_t* p);
                 uint8_t*         __embedDynamicProps(uint8_t* p);
-                void             _fetchUserProperties(USER_PROPERTIES_MAP& publish_userProps) {
-                    __fetchPassedProps(publish_userProps);
-                    __fetchStaticProps();
-                    __fetchDynamicProps();
+                uint32_t         _fetchUserProperties(USER_PROPERTIES_MAP& publish_userProps) {
+                    uint32_t total=0;
+                    total+=__fetchPassedProps(publish_userProps);
+                    total+=__fetchStaticProps();
+                    total+=__fetchDynamicProps();
+                    return total;
                 }
 
                 uint8_t*          _embedUserProperties(uint8_t* p, USER_PROPERTIES_MAP& props) {
@@ -78,12 +80,16 @@ class Packet {
                 void             _multiTopic(std::set<std::string> topix,H4AMC_SubscriptionOptions opts={});
                 uint8_t*         _poke16(uint8_t* p,uint16_t u);
                 void             _stringblock(const std::string& s);
+                uint8_t*         _serializeblock(uint8_t* p, mbx block);
+                uint8_t*         _applyfront(uint8_t* p);
     public:
         Packet(H4AsyncMQTT* p,uint8_t controlcode,bool hasid=false): _parent(p),_controlcode(controlcode),_hasId(hasid){}
 };
 
 class ConnectPacket: public Packet {
-
+#if MQTT5
+                H4AMC_FN_U8PTRU8 _willproperties=[](uint8_t* p){ return H4AMC_Helpers::encodeVariableByteInteger(p, 0);; }; // default to encodeVariableByte(0)
+#endif
             uint8_t  protocol[8]={0x0,0x4,'M','Q','T','T',MQTT_VERSION,0};
     public:
         ConnectPacket(H4AsyncMQTT* p);

@@ -157,10 +157,10 @@ void H4AsyncMQTT::_startPinging(uint32_t keepalive)
     _keepalive = keepalive;
     H4AMC_PRINT1("KA = %d\n",_keepalive - H4AMC_HEADROOM);
     static uint8_t PING[]={PINGREQ,0};    
-    h4.every(_keepalive - H4AMC_HEADROOM,[=]{ // [ ] Change rate if _keepalive changes on CONNACK.
+    h4.every(_keepalive - H4AMC_HEADROOM,[=]{
         if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
             H4AMC_PRINT1("MQTT PINGREQ\n");
-            if (_h4atClient->connected()) // [ ] Might only rely on _state
+            if (_h4atClient->connected())
                 _h4atClient->TX(PING, 2, false); /// optimise
             else H4AMC_PRINT2("PING:TCP UNCONNECTED\n");
         } //else Serial.printf("No ping: activity %d mS ago\n",(millis() - _h4atClient->_lastSeen));
@@ -255,20 +255,18 @@ void H4AsyncMQTT::_connect(){
 
     _h4atClient->onRX([=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); });
 
+#if H4AT_TLS
     auto cas = _caCert.size();
     auto pks = _privkey.size();
     auto pkps = _privkeyPass.size();
     auto cs = _clientCert.size();
     if (cas) {
-#if H4AT_TLS
      _h4atClient->secureTLS(_caCert.data(), _caCert.size(), 
                                 pks ? _privkey.data() : nullptr, pks, 
                                 pkps ? _privkeyPass.data() : nullptr, pkps, 
                                 cs ? _clientCert.data() : nullptr, cs);
-#else 
-        H4AMC_PRINT1("Make sure TLS is enabled in H4AsyncTCP\n");
-#endif 
     }
+#endif 
     _h4atClient->connect(_url);
     // _startReconnector();
 }
@@ -354,7 +352,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                 _state=H4AMC_RUNNING;
                 bool session=traits.conackflags & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
 
-                _ACKoutbound(0); // ACK connect to clear it from POOL.
+                // _ACKoutbound(0); // ACK connect to clear it from POOL.
                 if (!session){ _startClean(); }
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
                 if (_state == H4AMC_RUNNING && _cbMQTTConnect)
@@ -719,12 +717,15 @@ uint16_t H4AsyncMQTT::publish(const char* topic, const char* payload, size_t len
     return publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, opts_retain);
 }
 
-void H4AsyncMQTT::setWill(const char* topic, uint8_t qos, bool retain, const char* payload) {
-    H4AMC_PRINT2("setWill *%s* q=%d r=%d *%s*\n",topic,qos,retain,payload);
-    _willTopic = topic;
-    _willQos = qos;
-    _willRetain = retain;
-    _willPayload = payload;
+void H4AsyncMQTT::setWill(const char* topic, uint8_t qos, const char* payload, H4AMC_WillOptions opts) {
+    H4AMC_PRINT2("setWill *%s* q=%d r=%d *%s*\n",topic,qos,opts.getRetained(),payload);
+    _will.topic = topic;
+    _will.qos = qos;
+    _will.retain = opts.getRetained();
+    _will.payload = payload;
+#if MQTT5
+    _will.props = opts.getProperties();
+#endif
 }
 
 uint32_t H4AsyncMQTT::subscribe(const char* topic, H4AMC_SubscriptionOptions opts_qos) { return _runGuard([=](void){ SubscribePacket sub(this,topic,opts_qos); return sub.getId(); }, (uint32_t)0); }
