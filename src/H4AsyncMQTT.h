@@ -201,16 +201,22 @@ class PublishPacket;
 
 enum {
     H4AMC_DISCONNECTED,
+    H4AMC_CONNECTING,
     H4AMC_RUNNING,
     H4AMC_FATAL
 };
 
 class H4Authenticator;
+enum NetworkState : uint8_t {
+    H4AMC_NETWORK_DISCONNECTED,
+    H4AMC_NETWORK_CONNECTED
+};
 class H4AsyncMQTT {
         friend class Packet;
         friend class ConnectPacket;
         friend class PublishPacket;
         friend class mqttTraits;
+                NetworkState        _networkState=H4AMC_NETWORK_CONNECTED;
                 uint32_t            _state=H4AMC_DISCONNECTED;
 #if MQTT5
                 H4AMC_cbProperties  _cbMQTTConnect=nullptr;
@@ -258,6 +264,11 @@ class H4AsyncMQTT {
                 uint8_t             _willQos=0;
                 bool                _willRetain=false;
                 std::string         _willTopic;
+
+                std::vector<uint8_t> _caCert;
+                std::vector<uint8_t> _privkey;
+                std::vector<uint8_t> _privkeyPass;
+                std::vector<uint8_t> _clientCert;
                
                 void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
                 void                _ACKoutbound(uint16_t id){ _ACK(&_outbound,id,false); }
@@ -302,7 +313,7 @@ class H4AsyncMQTT {
                 void                disconnect(H4AMC_MQTT_ReasonCode reason=REASON_NORMAL_DISCONNECTION);
         static  std::string         errorstring(int e);
                 std::string         getClientId(){ return _clientId; }
-                size_t inline       getMaxPayloadSize(){ return (_HAL_maxHeapBlock() - H4T_HEAP_SAFETY) / 2 ; }
+                void                onDisconnect(H4AMC_FN_VOID callback){ _cbMQTTDisconnect=callback; }
 #if MQTT5
                 void                onConnect(H4AMC_cbProperties callback){ _cbMQTTConnect=callback; }
                 void                onRedirect(H4AMC_FN_STRING f) { _cbRedirect=f; }
@@ -327,7 +338,15 @@ class H4AsyncMQTT {
 #else
                 void                onConnect(H4AMC_FN_VOID callback){ _cbMQTTConnect=callback; }
 #endif
-                void                onDisconnect(H4AMC_FN_VOID callback){ _cbMQTTDisconnect=callback; }
+
+                /* secureTLS
+                    Make sure activating H4AT_TLS and passing a valid secure url "https", NOT "http" to connect securely.
+                    All keys/certificates must contain the null terminator if PEM encoded
+                 */
+                bool                secureTLS(const u8_t *ca, size_t ca_len, const u8_t *privkey = nullptr, size_t privkey_len=0,
+                                            const u8_t *privkey_pass = nullptr, size_t privkey_pass_len = 0,
+                                            const u8_t *cert = nullptr, size_t cert_len = 0);
+                void                informNetworkState(NetworkState state) { _networkState = state; }
                 void                onError(H4AMC_cbError callback){ _cbMQTTError=callback; }
                 void                onMessage(H4AMC_cbMessage callback){ _cbMessage=callback; }
                 void                onPublish(H4AMC_cbPublish callback){ _cbPublish=callback; }

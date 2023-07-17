@@ -118,12 +118,18 @@ void Packet::_build(){
     if(snd_buf){
         *snd_buf++=_controlcode;
         for(auto const& r:rl) *snd_buf++=r;
+        // if(_hasId) snd_buf=_poke16(snd_buf,_id); // Responsibility of _varHeader()
         snd_buf=_varHeader(snd_buf);
         _protocolPayload(snd_buf,virgin);
+        auto isPublish = (_controlcode & 0xf0) == PUBLISH;
 #if H4AMC_DEBUG
-        if((_controlcode & 0xf0) != PUBLISH) mqttTraits traits(virgin,_bs);
+        if(!isPublish) mqttTraits traits(virgin,_bs);
 #endif
-        _parent->_h4atClient->TX(virgin,_bs,false);
+        if (_parent->_h4atClient->connected())
+            _parent->_h4atClient->TX(virgin,_bs,false);
+        else 
+            H4AMC_PRINT2("TCP UNCONNECTED!\n");
+        if (isPublish && !_id) mbx::clear(virgin); // For QoS0
     } else _parent->_notify(ERR_MEM,_bs);
 }
 
@@ -325,7 +331,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 
     _protocolPayload=[=](uint8_t* p_pos,uint8_t* base){
         // [ClientID] --> ((Will properties)) --> [willTopic --> willPayload --> username --> password]
-        while(!_blox.empty()){ // [ ] TODO: Will properties...
+        while(!_blox.empty()){ // [ ] TODO: INSERT Will properties...
             mbx tmp=_blox.front();
             uint16_t n=tmp.len;
             uint8_t* p=tmp.data;
@@ -345,7 +351,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, const uint8_t* payload, size_t length, H4AMC_PublishOptions opts_retain):
     _topic(topic),_qos(qos),_retain(opts_retain.getRetained()),_length(length),Packet(p,PUBLISH,_qos) {
 
-        if(length < _parent->getMaxPayloadSize()){
+        if(length < getMaxPayloadSize()){
 #if MQTT5
             auto& props = opts_retain.getProperties();
 #endif
@@ -436,15 +442,11 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
             _protocolPayload=[=](uint8_t* p,uint8_t* base){ 
                 memcpy(p,payload,_length);
                 mqttTraits T(base,_bs);
-                /* if(_givenId) H4AsyncMQTT::_inbound[_id]=T;
-                else */ if(_qos) H4AsyncMQTT::_outbound[_id]=T;
-                else
-                    h4.once(10000U /* H4AT_WRITE_TIMEOUT */,[=](){mbx::clear(base);}); // Initial fix to QoS 0 memory leak.
+                if(_qos) H4AsyncMQTT::_outbound[_id]=T;
             };
             _build();
         } else {
-            H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,_parent->getMaxPayloadSize());
-            // _parent->_notify(_givenId ? H4AMC_INBOUND_PUB_TOO_BIG:H4AMC_OUTBOUND_PUB_TOO_BIG,length);
+            H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,getMaxPayloadSize());
             _parent->_notify(H4AMC_OUTBOUND_PUB_TOO_BIG,length);
         }
 }

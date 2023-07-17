@@ -31,6 +31,9 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 */
 #include <H4AsyncMQTT.h>
 #include "Packet.h"
+#if H4AT_TLS_SESSION
+#include "lwip/apps/altcp_tls_mbedtls_opts.h"
+#endif
 
 H4AMC_MEM_POOL          mbx::pool;
 std::set<int>           H4AsyncMQTT::_inbound;
@@ -159,26 +162,31 @@ void H4AsyncMQTT::_startPinging(uint32_t keepalive)
     h4.every(_keepalive - H4AMC_HEADROOM,[=]{ // [ ] Change rate if _keepalive changes on CONNACK.
         if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
             H4AMC_PRINT1("MQTT PINGREQ\n");
-            _h4atClient->TX(PING,2,false); /// optimise
+            if (_h4atClient->connected()) // [ ] Might only rely on _state
+                _h4atClient->TX(PING, 2, false); /// optimise
+            else H4AMC_PRINT2("PING:TCP UNCONNECTED\n");
         } //else Serial.printf("No ping: activity %d mS ago\n",(millis() - _h4atClient->_lastSeen));
     },nullptr,H4AMC_KA_ID,true);
-}
-
-void H4AsyncMQTT::_redirect(MQTT_Properties& props)
-{
-    std::string reference;
-    if (props.isAvailable(PROPERTY_SERVER_REFERENCE)) {
-        H4AMC_PRINT1("Server Reference=%s\n", props.getStringProperty(PROPERTY_SERVER_REFERENCE).c_str());
-        reference=props.getStringProperty(PROPERTY_SERVER_REFERENCE);
-    } else {
-        H4AMC_PRINT1("Server Reference not available\n");
-    }
-    if (_cbRedirect) (_cbRedirect(reference));
 }
 
 void H4AsyncMQTT::_connect(){
     
     H4AMC_PRINT1("_connect %s _state=%d\n",_url.data(),_state);
+    if (_state != H4AMC_DISCONNECTED) {
+        H4AMC_PRINT1("Already connecting/connected\n");
+        return;
+    }
+    // [ ] if network connected, proceed, else just follow create AsyncClient if not there. ..
+    if (_h4atClient)
+        _h4atClient->close();
+    
+    if (_networkState != H4AMC_NETWORK_CONNECTED) {
+        H4AMC_PRINT1("Network is disconnected\n"); // If it's connected, inform with informNetworkState() API
+        return;
+    }
+    _h4atClient = new H4AsyncClient;
+    _state = H4AMC_CONNECTING;
+    
     _h4atClient->onConnect([=](){
         H4AMC_PRINT1("on TCP Connect\n");
         _h4atClient->nagle(true);
@@ -187,15 +195,21 @@ void H4AsyncMQTT::_connect(){
         h4.queueFunction([=]{ ConnectPacket cp{this}; }); // offload required for esp32 to get off tcpip thread
     });
 
+    _h4atClient->onConnectFail([=](){
+        H4AMC_PRINT1("onConnectFail - reconnect\n");
+        _state = H4AMC_DISCONNECTED;
+        _h4atClient = nullptr;
+        _startReconnector();
+    });
+
     _h4atClient->onDisconnect([=]{
-        H4AMC_PRINT1("onDisconnect - start reconnector\n");
+        H4AMC_PRINT1("onDisconnect - reconnect\n");
         if(_state!=H4AMC_DISCONNECTED) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
         _state=H4AMC_DISCONNECTED;
-//        Serial.printf("CREATE NEW CLIENT!\n");
-        _h4atClient=new H4AsyncClient;
 #if MQTT5
         clearAliases(); // valid per network session
 #endif
+        _h4atClient = nullptr;
         _startReconnector();
     });
 
@@ -211,16 +225,54 @@ void H4AsyncMQTT::_connect(){
         */
         return true;
     });
-    _h4atClient->onConnectFail([=](){
-        H4AMC_PRINT1("onConnectFail - start reconnector\n");
-        _state = H4AMC_DISCONNECTED;
-        _h4atClient=new H4AsyncClient;
-        _startReconnector();
-    });
+
+#if H4AT_TLS_SESSION
+    static void* _tlsSession;
+    static uint32_t _lastSessionMs;
+    static std::string lastURL;
+    _h4atClient->enableTLSSession();
+    _h4atClient->onSession(
+        [=](void *tls_session)
+        {
+            H4AMC_PRINT1("onSession(%p)\n", tls_session);
+            _tlsSession = const_cast<void *>(tls_session);
+            _lastSessionMs = millis();
+            H4AMC_PRINT3("_tlsSession %p _lastSessionMs %u\n", _tlsSession, _lastSessionMs);
+        });
+
+
+    H4AMC_PRINT4("_url %s lastURL %s millis() %u _lastSessionMs %u diff=%u\n _url==lastURL=%d\tdiff<timeout=%d\n", _url.c_str(), lastURL.c_str(), millis(), _lastSessionMs, millis() - _lastSessionMs, 
+    _url == lastURL, (millis() - _lastSessionMs < ALTCP_MBEDTLS_SESSION_CACHE_TIMEOUT_SECONDS * 1000));
+    if (_tlsSession && _url == lastURL && (millis() - _lastSessionMs < ALTCP_MBEDTLS_SESSION_CACHE_TIMEOUT_SECONDS * 1000)) {
+        _h4atClient->setTLSSession(_tlsSession);
+    }
+    else {
+        if (_tlsSession) {
+            _h4atClient->freeTLSSession(_tlsSession);
+            _tlsSession = nullptr;
+        }
+    }
+    lastURL = _url;
+#endif
 
     _h4atClient->onRX([=](const uint8_t* data,size_t len){ _handlePacket((uint8_t*) data,len); });
+
+    auto cas = _caCert.size();
+    auto pks = _privkey.size();
+    auto pkps = _privkeyPass.size();
+    auto cs = _clientCert.size();
+    if (cas) {
+#if H4AT_TLS
+     _h4atClient->secureTLS(_caCert.data(), _caCert.size(), 
+                                pks ? _privkey.data() : nullptr, pks, 
+                                pkps ? _privkeyPass.data() : nullptr, pkps, 
+                                cs ? _clientCert.data() : nullptr, cs);
+#else 
+        H4AMC_PRINT1("Make sure TLS is enabled in H4AsyncTCP\n");
+#endif 
+    }
     _h4atClient->connect(_url);
-    _startReconnector();
+    // _startReconnector();
 }
 
 void H4AsyncMQTT::_destroyClient() {
@@ -264,7 +316,7 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
 
 void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
     H4AMC_DUMP4(data,len);
-    if(data[0]==PINGRESP){ // [ ] _ACKoutbound of UNSUBACK packet?
+    if(data[0]==PINGRESP){
         H4AMC_PRINT1("MQTT %s\n",mqttTraits::pktnames[data[0]]);
         return; // early bath
     }
@@ -277,14 +329,12 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         _destroyClient();
         return;
     }
-    auto i=traits.start();
     uint16_t id=traits.id;
 #if MQTT5
     auto props = traits.properties ? *(traits.properties) : MQTT_Properties();
 #endif
     auto rcode = traits.reasoncode;
-    switch (traits.type)
-    {
+    switch (traits.type){
     case CONNACK:
     {
         switch (rcode)
@@ -300,26 +350,28 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         case 0x00:
 #endif
         {
-                
-            _state=H4AMC_RUNNING;
-            bool session=i[0] & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
+            if (!_h4atClient->connected()){ // [ ] Generalize this condition?
+                H4AMC_PRINT1("ERR Received a delayed CONNACK, Connection was dropped\n");
+            } else {
+                _state=H4AMC_RUNNING;
+                bool session=traits.conackflags & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
 
-            _ACKoutbound(0); // ACK connect to clear it from POOL.
-            if (!session){
-                _startClean();
-            }
-            _resendPartialTxns(session);
-            H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
-#if H4AMC_DEBUG
-            SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
-#endif
+                _ACKoutbound(0); // ACK connect to clear it from POOL.
+                if (!session){ _startClean(); }
+                H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
+                if (_state == H4AMC_RUNNING && _cbMQTTConnect)
 #if MQTT5
-            if(_cbMQTTConnect) _cbMQTTConnect(traits.properties->getUserProperties());
+                    _cbMQTTConnect(traits.properties->getUserProperties());
 #else
-            if(_cbMQTTConnect) _cbMQTTConnect();
+                    _cbMQTTConnect();
 #endif
+                _resendPartialTxns(session);
+#if H4AMC_DEBUG
+                SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
+#endif
+            }
         }
-                break;
+            break;
 #if MQTT5
         case REASON_SERVER_MOVED:
         case REASON_USE_ANOTHER_SERVER:
@@ -385,7 +437,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                 H4AMC_PRINT1("DISCONNECT %s\n", mqttTraits::rcnames[static_cast<H4AMC_MQTT_ReasonCode>(rcode)]);
                 _notify(H4AMC_SERVER_DISCONNECT, rcode);
         }
-        _handleReasonString(props);
+        // _handleReasonString(props);
         _state = H4AMC_DISCONNECTED;
         if (_cbMQTTDisconnect)
             _cbMQTTDisconnect();
@@ -407,7 +459,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         break;
     }
 #if MQTT5
-        //_handleReasonString();
+        _handleReasonString(props);
 #endif
         if (traits.next.second)
         {
@@ -424,6 +476,18 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
 }
 
 #if MQTT5
+void H4AsyncMQTT::_redirect(MQTT_Properties& props)
+{
+    std::string reference;
+    if (props.isAvailable(PROPERTY_SERVER_REFERENCE)) {
+        H4AMC_PRINT1("Server Reference=%s\n", props.getStringProperty(PROPERTY_SERVER_REFERENCE).c_str());
+        reference=props.getStringProperty(PROPERTY_SERVER_REFERENCE);
+    } else {
+        H4AMC_PRINT1("Server Reference not available\n");
+    }
+    if (_cbRedirect) (_cbRedirect(reference));
+}
+
 void H4AsyncMQTT::_protocolError(H4AMC_MQTT_ReasonCode reason)
 {
     H4AMC_PRINT1("Protocol Error %u:%s\n", reason, mqttTraits::rcnames[reason]);
@@ -576,9 +640,15 @@ void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handle
                 }
             }
             else {
-                H4AMC_PRINT4("SET DUP & RESEND %d\n",m.id);
-                m.data[0]|=0x08; // set dup & resend
-                _h4atClient->TX(m.data,m.len,false);
+                if (m.isPublish()) {  // set dup & resend ONLY for PUBlISH packets (..?)
+                    H4AMC_PRINT4("SET DUP %d\n", m.id);
+                    m.data[0] |= 0x08;
+                }
+                H4AMC_PRINT4("RESEND %d\n", m.id);
+                H4AMC_DUMP4(m.data, m.len);
+                if (_h4atClient->connected())
+                    _h4atClient->TX(m.data,m.len,false); // [ ] Concatenate all messages
+                else H4AMC_PRINT2("TCP DISCONNECTED!\n");
             }
         }
         else {
@@ -609,7 +679,7 @@ void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,
 void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId,bool clean){
     H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s,%d)\n",url,auth,pass,clientId,clean);
     if(_state==H4AMC_DISCONNECTED){
-        _h4atClient=new H4AsyncClient;
+        // _h4atClient=new H4AsyncClient;
         _url=url;
         _username = auth;
         _password = pass;
@@ -619,6 +689,7 @@ void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,cons
         _cleanSession = clean;
 #endif
         _clientId = "" ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION);
+        informNetworkState(H4AMC_NETWORK_CONNECTED); // Assume being called on Network Connect.
         _connect();
         H4AsyncClient::_scavenge();
     } else if(_cbMQTTError) _cbMQTTError(ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
@@ -632,7 +703,7 @@ void H4AsyncMQTT::disconnect(H4AMC_MQTT_ReasonCode reason) {
         // User Property
     H4AMC_PRINT1("USER DCX\n");
     if(_state==H4AMC_RUNNING) _h4atClient->TX(G,2,false);
-    else _h4atClient->_cbError(ERR_CONN,H4AMC_USER_LOGIC_ERROR);
+    else _notify(ERR_CONN,H4AMC_USER_LOGIC_ERROR);
 }
 
 std::string H4AsyncMQTT::errorstring(int e){
@@ -687,5 +758,34 @@ void H4AsyncMQTT::dump(){
     for(auto & p:_inbound) H4AMC_PRINT4("%d\t",p);
 
     H4AMC_PRINT4("\n");
+#endif
+}
+
+bool H4AsyncMQTT::secureTLS(const u8_t *ca, size_t ca_len, const u8_t *privkey, size_t privkey_len, const u8_t *privkey_pass, size_t privkey_pass_len, const u8_t *cert, size_t cert_len)
+{
+#if H4AT_TLS
+    // Copy to internals 
+    H4AMC_PRINT2("secureTLS(%p,%d,%p,%d,%p,%d,%p,%d)\n",ca,ca_len,privkey,privkey_len,privkey_pass,privkey_pass_len,cert,cert_len);
+
+    if (ca) {
+        _caCert.reserve(ca_len);
+        std::copy_n(ca, ca_len, std::back_inserter(_caCert));
+    }
+    if (privkey) {
+        _privkey.reserve(privkey_len);
+        std::copy_n(privkey, privkey_len, std::back_inserter(_privkey));
+    }
+    if (privkey_pass) {
+        _privkeyPass.reserve(privkey_pass_len);
+        std::copy_n(privkey_pass, privkey_pass_len, std::back_inserter(_privkeyPass));
+    }
+    if (cert) {
+        _clientCert.reserve(cert_len);
+        std::copy_n(cert, cert_len, std::back_inserter(_clientCert));
+    }
+    return true;
+#else
+    H4AMC_PRINT1("TLS is not activated within H4AsyncTCP\n");
+	return false;
 #endif
 }

@@ -89,15 +89,14 @@ SEE [Installation](#installation)
 
 || Name | Provides | Notes |
 | :---: | :----------  | :--- | :--- |
-||[Forked AsyncTCP](https://github.com/philbowles/AsyncTCP-master)|"Glue" to LwIP (ESP8266)| Important bugfixes |
-||[Forked ESPAsyncTCP](https://github.com/philbowles/ESPAsyncTCP-master)|"Glue" to LwIP(ESP32)| Missing features added |
-||[Forked ESPAsyncWebserver](https://github.com/philbowles/ESPAsyncWebServer)| Basis of webUI in H4Plugins| Several major bugfixes |
-|![roadmap](assets/common/tools_icon.jpg)|[PMB Tools](https://github.com/philbowles/H4Tools)|'32/'8266 HAL and utility functions| |
-|![roadmap](assets/common/H4Async_icon.jpg)|[H4AsyncClient](https://github.com/philbowles/H4AsyncClient)|Simple Large-payload Async TCP| API-compatible with ESPAsyncTCP, seamless TLS/SSL |
-|![roadmap](assets/common/pangolin_icon.jpg)|[H4AsyncMQTT](https://github.com/philbowles/H4AsyncMQTT)|Async MQTT Client|QoS 0/1/2 Fully 3.1.1 compliant. Large payloads |
-|![roadmap](assets/common/armadillo_icon.jpg)|[ArmadilloHTTP](https://github.com/philbowles/ArmadilloHTTP)|Async HTTP/S Client| Simple send/callback of large payloads |
-|![roadmap](assets/common/h4_icon.jpg)|[H4](https://github.com/philbowles/H4)|Scheduler/Async Timers| |
-|![roadmap](assets/common/h4p_icon.jpg)|[H4/Plugins](https://github.com/philbowles/h4plugins)|Full Async IOT Firmware| Webserver, MQTT, OTA, NTP, HTTP etc etc |
+||[H4AsyncTCP](https://github.com/hamzahajeir/H4AsyncTCP)|TCP and TLS communication | |
+||[H4AsyncWebServer](https://github.com/hamzahajair/H4AsyncWebServer)| Basis of webUI in H4Plugins| Several major bugfixes |
+|![roadmap](assets/common/tools_icon.jpg)|[PMB Tools](https://github.com/hamzahajeir/H4Tools)|'32/'8266 HAL and utility functions| |
+|![roadmap](assets/common/H4Async_icon.jpg)|[H4AsyncTCP](https://github.com/hamzahajeir/H4AsyncClient)|Simple Large-payload Async TCP| API-compatible with ESPAsyncTCP, seamless TLS/SSL |
+|![roadmap](assets/common/pangolin_icon.jpg)|[H4AsyncMQTT](https://github.com/hamzahajeir/H4AsyncMQTT)|Async MQTT Client|QoS 0/1/2 Fully 3.1.1 compliant. Large payloads |
+|![roadmap](assets/common/armadillo_icon.jpg)|[ArmadilloHTTP](https://github.com/hamzahajeir/ArmadilloHTTP)|Async HTTP/S Client| Simple send/callback of large payloads |
+|![roadmap](assets/common/h4_icon.jpg)|[H4](https://github.com/hamzahajeir/H4)|Scheduler/Async Timers| |
+|![roadmap](assets/common/h4p_icon.jpg)|[H4/Plugins](https://github.com/hamzahajeir/h4plugins)|Full Async IOT Firmware| Webserver, MQTT, OTA, NTP, HTTP etc etc |
 
 ## H4AsyncMQTT installation path
 
