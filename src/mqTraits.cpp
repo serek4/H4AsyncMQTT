@@ -228,7 +228,7 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                 if (!ret.first) protocolpayload=ret.second;
             } else protocolpayload=&i[3];
 #else
-            protocolpayload=i[2];
+            protocolpayload=&i[2];
 #endif
             if (type == SUBACK || type == UNSUBACK) {
                 int reasons = data+len-protocolpayload;
@@ -370,9 +370,11 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
         }
         break;
     }
+#if MQTT5
     if (properties) {
         properties->dump();
     }
+#endif
 }
 
 void mqttTraits::dump(){

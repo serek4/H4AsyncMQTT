@@ -69,6 +69,16 @@ struct Server_Options {
     uint8_t maximum_qos=2;
     std::string response_information;
 };
+#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+
+struct SubscriptionResource {
+    H4AMC_cbMessage cb;
+    std::set<std::string> topix;
+    // SubscriptionResource():cb(nullptr) {}
+    // SubscriptionResource(H4AMC_cbMessage cb, std::set<std::string> topics) : cb(cb), topix(topics) {}
+};
+#endif
+#endif
 class H4AMC_SubscriptionOptions {
     uint8_t qos;
 #if MQTT5
@@ -99,17 +109,7 @@ public:
             uint8_t             getQos(){ return qos; }
 
 };
-#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
 
-struct SubscriptionResource {
-    H4AMC_cbMessage cb;
-    std::set<std::string> topix;
-    // SubscriptionResource():cb(nullptr) {}
-    // SubscriptionResource(H4AMC_cbMessage cb, std::set<std::string> topics) : cb(cb), topix(topics) {}
-};
-#endif
-
-#endif
 
 class H4AMC_PublishOptions {
     bool retained;
@@ -121,7 +121,9 @@ public:
     H4AMC_PublishOptions(bool retained = false) : retained(retained) {}
 
     bool getRetained() { return retained; }
+#if MQTT5
     MQTT5PublishProperties& getProperties() { return props; }
+#endif
 };
 
 class mqttTraits {             
@@ -152,14 +154,11 @@ class mqttTraits {
                 std::pair<uint8_t*,size_t> next;
                 bool            malformed_packet=false;
                 std::vector<uint8_t> subreasons;
-#if MQTT5
                 uint8_t         reasoncode=0;
+#if MQTT5
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
                 uint32_t        subscription_id; // Subscription ID
 #endif
-#endif
-
-#if MQTT5
                 std::shared_ptr<MQTT_Properties> properties;
                 // MQTT_Properties*  properties = nullptr;     
                 MQTT_PROP_PARSERET     initiateProperties(uint8_t* start) { properties=std::make_shared<MQTT_Properties>();
@@ -176,6 +175,9 @@ class mqttTraits {
 #if MQTT5
         static std::map<H4AMC_MQTT_ReasonCode,char*> rcnames;
         static std::map<H4AMC_MQTT5_Property,char*> propnames;
+#else
+        static  std::map<uint8_t,char*> connacknames;
+        static  std::map<uint8_t,char*> subacknames;
 #endif
         static std::map<uint8_t,char*> pktnames;
         std::string             getPktName(){

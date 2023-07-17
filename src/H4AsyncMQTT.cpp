@@ -57,7 +57,6 @@ H4_INT_MAP H4AsyncMQTT::_errorNames={
     {H4AMC_USER_LOGIC_ERROR,"USER LOGIC ERROR"},
 #endif
 };
-#if MQTT5
 namespace H4AMC_Helpers {
     uint8_t* poke16(uint8_t* p,uint16_t u){
         *p++=(u & 0xff00) >> 8;
@@ -128,7 +127,6 @@ namespace H4AMC_Helpers {
         return len;
     }
 }
-#endif
 H4AsyncMQTT::H4AsyncMQTT(){
 
 }

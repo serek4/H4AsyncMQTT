@@ -148,7 +148,7 @@ enum Subscription_Options {
 enum H4AMC_MQTT_ReasonCode : uint8_t {
     REASON_SUCCESS                          = 0x00,
     REASON_NORMAL_DISCONNECTION             = 0x00
-}
+};
 #endif // MQTT5
 
 

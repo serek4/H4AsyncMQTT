@@ -1,5 +1,6 @@
 #pragma once
 #include "h4amc_config.h"
+#if MQTT5
 #include "h4amc_common.h"
 #include <vector>
 #include <memory>
@@ -246,3 +247,4 @@ private:
 	friend class PublishPacket;
     uint16_t topic_alias=0;
 };
+#endif

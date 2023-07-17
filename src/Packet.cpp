@@ -355,7 +355,8 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
 #if MQTT5
             auto& props = opts_retain.getProperties();
 #endif
-            _begin=[this, topic, &opts_retain, &props]{ 
+            _begin=[&, this, topic]{ 
+
 #if MQTT5
                 if (!_parent->availableTXAlias(_topic)) { //Fresh topic OR Server Topic Alias MAX got exceeded.
                     _stringblock(_topic);
@@ -435,8 +436,10 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
                 _blox.pop();
                 if(_hasId) p_pos=_poke16(p_pos,_id);
                 // Properties...
-
-                return _properties(p_pos);
+#if MQTT5
+                p_pos=_properties(p_pos);
+#endif
+                return p_pos;
             };
 
             _protocolPayload=[=](uint8_t* p,uint8_t* base){ 
