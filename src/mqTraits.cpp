@@ -251,7 +251,13 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                     if (*ii) { // Properties (Property length field)
                         Serial.printf("FOUND PROPS\n");
                         auto ret = initiateProperties(ii);
-                        if (!ret.first) { protocolpayload=ret.second; }
+                        if (!ret.first) {
+                            protocolpayload = ret.second;
+#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+                            auto subIds = properties->getNumericProperties(PROPERTY_SUBSCRIPTION_IDENTIFIER);
+                            subscription_ids = std::set<uint32_t>{subIds.begin(), subIds.end()};
+#endif
+                        }
                     }
 #endif
                     payload=protocolpayload;
@@ -291,7 +297,7 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                 uint8_t cf=data[9];
                 H4AMC_PRINT3("  Protocol: %s\n",data[8]==4 ? "3.1.1":stringFromInt(data[8],"0x%02x").data());
                 H4AMC_PRINT4("  Flags: 0x%02x\n",cf);
-                H4AMC_PRINT3("  Session: %s\n",((cf & H4AMC_SESSION_CLEAN_START) >> 1) ? "Clean":"Dirty");
+                H4AMC_PRINT3("  Session: %s\n",((cf & CLEAN_START) >> 1) ? "Clean":"Dirty");
                 H4AMC_PRINT3("  Keepalive: %d\n",_peek16(&data[10]));
                 uint8_t* sp=&data[12];
                 H4AMC_PRINT3("  ClientId: %p %s\n",sp,_decodestring(&sp).data());

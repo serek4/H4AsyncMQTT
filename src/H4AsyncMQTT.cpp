@@ -190,6 +190,7 @@ void H4AsyncMQTT::_connect(){
         _h4atClient->nagle(true);
         h4.cancelSingleton(H4AMC_RCX_ID);
         _startPinging();
+        _state=H4AMC_TCP_CONNECTED;
         h4.queueFunction([=]{ ConnectPacket cp{this}; }); // offload required for esp32 to get off tcpip thread
     });
 
@@ -202,7 +203,7 @@ void H4AsyncMQTT::_connect(){
 
     _h4atClient->onDisconnect([=]{
         H4AMC_PRINT1("onDisconnect - reconnect\n");
-        if(_state!=H4AMC_DISCONNECTED) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
+        if(_state==H4AMC_RUNNING) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
         _state=H4AMC_DISCONNECTED;
 #if MQTT5
         clearAliases(); // valid per network session
@@ -274,8 +275,8 @@ void H4AsyncMQTT::_connect(){
 void H4AsyncMQTT::_destroyClient() {
     H4AMC_PRINT1("DESTROY CLIENT\n");
     if (_h4atClient && _h4atClient->connected()) {
-        _h4atClient->close();
-    }
+        _h4atClient->close(); // It all should be ending here
+    }// [ ] else _startReconnector(); // Should not be called ?
     _h4atClient=nullptr; // OR the callback?
 }
 void H4AsyncMQTT::_hpDespatch(mqttTraits P){ 
@@ -293,19 +294,27 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
 //                Serial.printf("SAFEHEAP: %d\n",H4T_HEAP_SAFETY);
                 Serial.printf("H4AMC Vn: %s\n",H4AMC_VERSION);
                 Serial.printf("NRETRIES: %d\n",H4AMC_MAX_RETRIES);
-#if MQTT5
-                Serial.printf("start : %s\n",_cleanStart ? "clean":"dirty");
-#else
-                Serial.printf("session : %s\n",_cleanSession ? "clean":"dirty");
-#endif
+                Serial.printf("start : %s\n",_haveSessionData() ? "clean":"dirty");
                 Serial.printf("clientID: %s\n",_clientId.data());
                 Serial.printf("keepaliv: %d\n",_keepalive);
             }
             else if(pl=="dump"){ dump(); }
         }
-        else
+        else{
+#endif
+#if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+        bool delivered=false;
+        auto& subIds=P.subscription_ids;
+        for (auto subId : subIds) {
+            if (_subsResources.count(subId)){
+                _subsResources[subId].cb(P.topic.data(), P.payload, P.plen, P.qos, P.retain, P.dup);
+                delivered=true;
+            }
+        }
+        if (!delivered)
 #endif
         _cbMessage(P.topic.data(), P.payload, P.plen, P.qos, P.retain, P.dup);
+        }
     }
 }
 
@@ -316,13 +325,23 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         H4AMC_PRINT1("MQTT %s\n",mqttTraits::pktnames[data[0]]);
         return; // early bath
     }
+#if MQTT5
+    if (len>MQTT_CONNECT_MAX_PACKET_SIZE) {
+        H4AMC_PRINT1("LARGE inbound Packet size\n");
+        _protocolError(REASON_PACKET_TOO_LARGE);
+        return;
+    }
+#endif
     mqttTraits traits(data,len);
     if(traits.malformed_packet)
     {
         H4AMC_PRINT1("Malformed packet! DISCONNECT\n");
         // [x] MAY Send a DISCONNECT packet to the server with a Reason Code of 0x81 (Malformed Packet)
+#if MQTT5
         _protocolError(REASON_MALFORMED_PACKET);
-        // _destroyClient();
+#else
+        disconnect();
+#endif
         return;
     }
     uint16_t id=traits.id;
@@ -350,10 +369,19 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                 H4AMC_PRINT1("ERR Received a delayed CONNACK, Connection was dropped\n");
             } else {
                 _state=H4AMC_RUNNING;
-                bool session=traits.conackflags & 0x01; // Check CONNACK session flag, and reflect on _resendPartialTxns()
+                bool session=traits.conackflags & 0x01;
 
-                // _ACKoutbound(0); // ACK connect to clear it from POOL.
-                if (!session){ _startClean(); }
+                /* If the Client does not have Session State and receives Session Present set to 1 it MUST close
+                    the Network Connection [MQTT-3.2.2-4]. If it wishes to restart with a new Session the Client can
+                    reconnect using Clean Start set to 1.
+                 */
+                if (session && !_haveSessionData()) {
+                    // _cleanStart = true;
+                    _destroyClient();
+                    return;
+                } else {
+                    _startClean();
+                }
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
                 if (_state == H4AMC_RUNNING && _cbMQTTConnect)
 #if MQTT5
@@ -372,9 +400,12 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         case REASON_SERVER_MOVED:
         case REASON_USE_ANOTHER_SERVER:
             _redirect(*(traits.properties));
-            break;
+
+            // break;
         default:
             H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT_ReasonCode>(rcode)]);
+            _startClean(); // If a Server sends a CONNACK packet containing a non-zero Reason Code it MUST set Session Present to 0
+            // [ ] Reconnect?? By the TCP scavenge mechanism...
 #else
         default: 
             H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[rcode]);
@@ -386,6 +417,11 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         break;
     case PUBACK:
     case PUBCOMP:
+#if MQTT5
+        if (rcode)
+            _notify(traits.type==PUBACK?H4AMC_PUBACK_FAIL:H4AMC_PUBCOMP_FAIL, rcode);
+        // [ ] FLOW CONTROL .. DECREMENT inflight and send packets under holding.
+#endif
         if (_cbPublish) _cbPublish(id);
     case UNSUBACK:
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
@@ -406,12 +442,27 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         break;
     case PUBREC:
         {
+#if MQTT5
+        if (rcode)
+            _notify(H4AMC_PUBREC_FAIL, rcode);
+        if (rcode>=REASON_UNSPECIFIED_ERROR)// [ ] FLOW CONTROL .. Decrement inflight.
+        {
+            _ACKoutbound(id);
+        }
+        else
+#endif
+        {
             _outbound[id].pubrec=true;
             PubrelPacket prp(this,id);
+        }
         }
         break;
     case PUBREL:
         {
+#if MQTT5
+            if (rcode)
+                _notify(H4AMC_PUBREL_FAIL, rcode);
+#endif
             if(_inbound.count(id)) {
                 _inbound.erase(id);
             } else _notify(H4AMC_INBOUND_QOS_ACK_FAIL,id);
@@ -425,7 +476,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
             case REASON_SERVER_MOVED:
             case REASON_USE_ANOTHER_SERVER:
                 _redirect(props);
-            break;
+            // break;
             default:
                 H4AMC_PRINT1("DISCONNECT %s\n", mqttTraits::rcnames[static_cast<H4AMC_MQTT_ReasonCode>(rcode)]);
                 _notify(H4AMC_SERVER_DISCONNECT, rcode);
@@ -514,7 +565,6 @@ void H4AsyncMQTT::_protocolError(H4AMC_MQTT_ReasonCode reason)
 {
     H4AMC_PRINT1("Protocol Error %u:%s\n", reason, mqttTraits::rcnames[reason]);
     disconnect(reason);
-    _destroyClient();
 }
 void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
 {
@@ -538,8 +588,9 @@ void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
         case PROPERTY_MAXIMUM_PACKET_SIZE:
             _serverOptions->maximum_packet_size = props.getNumericProperty(p);
             break;
-        case PROPERTY_ASSIGNED_CLIENT_IDENTIFIER: // [ ] Any action?
+        case PROPERTY_ASSIGNED_CLIENT_IDENTIFIER:
             H4AMC_PRINT1("Assigned ClientID=%s\n", props.getStringProperty(p).c_str());
+            _assignedClientId=props.getStringProperty(p);
             break;
         case PROPERTY_TOPIC_ALIAS_MAXIMUM:
             _serverOptions->topic_alias_max = props.getNumericProperty(p);
@@ -698,18 +749,14 @@ void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,
 //
 //      PUBLIC
 //
-void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId,bool clean){
-    H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s,%d)\n",url,auth,pass,clientId,clean);
+void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId/* ,bool clean */){
+    H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s,%d)\n",url,auth,pass,clientId/* ,clean */);
     if(_state==H4AMC_DISCONNECTED){
         // _h4atClient=new H4AsyncClient;
         _url=url;
         _username = auth;
         _password = pass;
-#if MQTT5
-        _cleanStart = clean;
-#else
-        _cleanSession = clean;
-#endif
+        // _cleanStart = clean;
         _clientId = "" ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION);
         informNetworkState(H4AMC_NETWORK_CONNECTED); // Assume being called on Network Connect.
         _connect();
@@ -717,15 +764,16 @@ void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,cons
     } else if(_cbMQTTError) _cbMQTTError(ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
 }
 
-void H4AsyncMQTT::disconnect(H4AMC_MQTT_ReasonCode reason) {
+void H4AsyncMQTT::disconnect(H4AMC_MQTT_ReasonCode reason) { // [ ] DisconnectPacket ...
     static uint8_t G[] = {DISCONNECT, reason}; 
     // [ ] Properties...
         // Session expiry interval
         // Reason String
         // User Property
     H4AMC_PRINT1("USER DCX\n");
-    if(_state==H4AMC_RUNNING) _h4atClient->TX(G,2,false);
+    if(_state>=H4AMC_TCP_CONNECTED) _h4atClient->TX(G,2,false); // Generalize to TCP_CONNECTED for MQTT 5.0 prior-Successful-CONNACK disconnect() calls
     else _notify(ERR_CONN,H4AMC_USER_LOGIC_ERROR);
+    _destroyClient();
 }
 
 std::string H4AsyncMQTT::errorstring(int e){

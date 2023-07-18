@@ -201,6 +201,7 @@ public:
 											}
 				std::string 				getStringProperty(H4AMC_MQTT5_Property p);
     			uint32_t 					getNumericProperty(H4AMC_MQTT5_Property p);
+                std::vector<uint32_t>       getNumericProperties(H4AMC_MQTT5_Property p);
                 std::vector<uint8_t>        getBinaryProperty(H4AMC_MQTT5_Property p);
 
 				bool 						isAvailable(H4AMC_MQTT5_Property p);
@@ -239,6 +240,9 @@ struct MQTT5MessageProperties {
     	std::string 			response_topic;
     	std::vector<uint8_t> 	correlation_data;
     	H4T_NVP_MAP				user_properties;
+        // void setPayloadIndicator(uint8_t payload_indicator) { payload_format_indicator = payload_indicator; }
+        // void setMessageExpiry(uint32_t message_expiry) { message_expiry_interval = message_expiry; }
+        // void setContentType(const std::string& content_type) { this->content_type=content_type; }
 };
 struct MQTT5WillProperties : public MQTT5MessageProperties {
     uint32_t will_delay_interval;

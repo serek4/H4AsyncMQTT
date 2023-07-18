@@ -82,6 +82,7 @@ class Packet {
                 void             _stringblock(const std::string& s);
                 uint8_t*         _serializeblock(uint8_t* p, mbx block);
                 uint8_t*         _applyfront(uint8_t* p);
+        inline  void             _notify(H4AMC_FAILURE e, int i=0) { _parent->_notify(e,i); }
     public:
         Packet(H4AsyncMQTT* p,uint8_t controlcode,bool hasid=false): _parent(p),_controlcode(controlcode),_hasId(hasid){}
 };

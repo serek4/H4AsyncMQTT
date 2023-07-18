@@ -44,24 +44,15 @@ enum H4AMC_MQTT_CNX_FLAG : uint8_t {
     WILL_QOS1     = 0x08,
     WILL_QOS2     = 0x10,
     WILL          = 0x04,
-#if MQTT5
-    CLEAN_START   = 0x02
-#else
-    CLEAN_SESSION = 0x02
-#endif
+    CLEAN_START   = 0x02    // Called CLEAN_SESSION for v3.1.1 
 };
-#if MQTT5
-#define H4AMC_SESSION_CLEAN_START CLEAN_START
-#else
-#define H4AMC_SESSION_CLEAN_START CLEAN_SESSION
-#endif
 
 #if MQTT5
 struct Server_Options {
-    // uint32_t session_expiry_interval=MQTT_CONNECT_SESSION_EXPRITY_INTERVAL; // Until being supported in the library.
-    uint16_t receive_max= MQTT_CONNECT_RECEIVE_MAXIMUM;
+    uint32_t session_expiry_interval=MQTT_CONNECT_SESSION_EXPRITY_INTERVAL;
+    uint16_t receive_max= UINT16_MAX;
     uint16_t topic_alias_max=0;
-    uint32_t maximum_packet_size= MQTT_CONNECT_MAX_PACKET_SIZE;
+    uint32_t maximum_packet_size= UINT32_MAX;
     bool retain_available=true;
     bool wildcard_subscription_available=true;
     bool subscriptions_identifiers_available=true;
@@ -173,7 +164,7 @@ class mqttTraits {
                 uint8_t         reasoncode=0;
 #if MQTT5
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
-                uint32_t        subscription_id; // Subscription ID
+                std::set<uint32_t> subscription_ids;
 #endif
                 std::shared_ptr<MQTT_Properties> properties;
                 // MQTT_Properties*  properties = nullptr;     
@@ -220,8 +211,8 @@ class PublishPacket;
 enum {
     H4AMC_DISCONNECTED,
     H4AMC_CONNECTING,
-    H4AMC_RUNNING,
-    H4AMC_FATAL
+    H4AMC_TCP_CONNECTED,
+    H4AMC_RUNNING
 };
 
 struct WillMessage {
@@ -247,7 +238,7 @@ class H4AsyncMQTT {
                 uint32_t            _state=H4AMC_DISCONNECTED;
 #if MQTT5
                 H4AMC_cbProperties  _cbMQTTConnect=nullptr;
-                bool                _cleanStart=true;
+                // bool                _cleanStart=true; // _forceCleanStart=true;
                 Server_Options*     _serverOptions=nullptr;
                 std::map<PacketHeader, std::shared_ptr<USER_PROPERTIES_MAP>> _user_static_props;                
                 std::map<PacketHeader, H4AMC_FN_DYN_PROPS> _user_dynamic_props;
@@ -278,6 +269,7 @@ class H4AsyncMQTT {
                 H4AMC_cbMessage     _cbMessage=nullptr;
                 H4AMC_cbPublish     _cbPublish=nullptr;
                 std::string         _clientId;
+                std::string         _assignedClientId;
         static  H4_INT_MAP          _errorNames;
         // static  H4AMC_PACKET_MAP    _inbound;
         static  std::set<int>       _inbound;
@@ -303,6 +295,7 @@ class H4AsyncMQTT {
                 void                _startPinging(uint32_t keepalive=KEEP_ALIVE_INTERVAL);
                 void                _connect();
                 void                _destroyClient();
+                bool                _haveSessionData() { return _inbound.size() || _outbound.size(); }
 #if MQTT5
                 void                _protocolError(H4AMC_MQTT_ReasonCode reason);
                 void                _handleConnackProps(MQTT_Properties& props);
@@ -334,10 +327,10 @@ class H4AsyncMQTT {
     public:
                 H4AsyncClient*      _h4atClient;
         H4AsyncMQTT();
-                void                connect(const char* url,const char* auth="",const char* pass="",const char* clientId="",bool clean=true);
+                void                connect(const char* url,const char* auth="",const char* pass="",const char* clientId=""/* ,bool clean=true */);
                 void                disconnect(H4AMC_MQTT_ReasonCode reason=REASON_NORMAL_DISCONNECTION);
         static  std::string         errorstring(int e);
-                std::string         getClientId(){ return _clientId; }
+                std::string         getClientId(){ return _assignedClientId.length() ? _assignedClientId : _clientId; }
                 void                onDisconnect(H4AMC_FN_VOID callback){ _cbMQTTDisconnect=callback; }
 #if MQTT5
                 void                onConnect(H4AMC_cbProperties callback){ _cbMQTTConnect=callback; }

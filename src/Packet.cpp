@@ -129,6 +129,15 @@ void Packet::_build(){
 #if H4AMC_DEBUG
         if(!isPublish) mqttTraits traits(virgin,_bs);
 #endif
+#if MQTT5
+        if (_parent->_serverOptions->maximum_packet_size < _bs) { // [ ] Apply in each packet by predicting the payload size and preventing user properties and reason strings??
+            H4AMC_PRINT1("Server doesn't permit that size\n");
+            _notify(H4AMC_OUTBOUND_PUB_TOO_BIG, _bs);
+            /* if (!(isPublish && !_id))  */mbx::clear(virgin);
+            return;
+        }
+#endif
+        // [ ] APPLY FLOW CONTROL if PUBLISH
         if (_parent->_h4atClient->connected())
             _parent->_h4atClient->TX(virgin,_bs,false);
         else 
@@ -149,31 +158,52 @@ void Packet::_idGarbage(uint16_t id){
 
 void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions opts){
     _id=++_parent->_nextId;
-    _begin=[this,&topics,&opts]{
-        for(auto &t:topics){
-            _bs+=(_controlcode==SUBSCRIBE ? 3:2)+t.length(); // 3 because of subscription options/QoS (3.1.1).
-        }
 #if MQTT5
 #if H4AMC_ENABLE_CHECKS
         auto& svrOpts = _parent->_serverOptions;
         auto& shareSubAvailable = svrOpts->shared_subscription_available;
+        auto& wildcardAvailable = svrOpts->wildcard_subscription_available;
         for (auto& t:topics) {
             auto levels = split(t, "/");
             auto shareTopic = levels[0] == "$share";
+
+            auto multilevelwild = std::find(levels.begin(), levels.end(), "#");
+            auto contains_multi = multilevelwild!=levels.end();
+            if (contains_multi && multilevelwild!=levels.end()-1) {
+                H4AMC_PRINT2("ERROR # comes in middle!\n");
+                _notify(H4AMC_BAD_TOPIC);
+                return;
+            }
+            if (!wildcardAvailable) {
+                auto singlelevelwild = std::find(levels.begin(), levels.end(), "+");
+                auto contains_single = singlelevelwild != levels.end();
+                if (contains_multi || contains_single) {
+                    _notify(H4AMC_WILDCARD_UNAVAILABLE);
+                    return;
+                }
+            }
+
             if (shareTopic) {
                 if (shareSubAvailable) {
                     if (levels[1]=="+" || levels[1]=="#") {
+                        _notify(H4AMC_BAD_SHARED_TOPIC);
                         H4AMC_PRINT1("ERROR: Bad Share Name");
                         return;
                     }
                 } else {
-
+                    _notify(H4AMC_SHARED_SUBS_UNAVAILABLE);
                     H4AMC_PRINT1("ERROR: Shared subscriptions is not supported by the server [topic=%s]\n", t);
                     return;
                 }
             }
         }
 #endif
+#endif
+    _begin=[&,this]{
+        for(auto &t:topics){
+            _bs+=(_controlcode==SUBSCRIBE ? 3:2)+t.length(); // 3 because of subscription options/QoS (3.1.1).
+        }
+#if MQTT5
         bool use_subId = false;
 #endif
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
@@ -284,11 +314,8 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
     _bs=10;
 
     _begin=[=]{
-#if MQTT5
-        if(_parent->_cleanStart) protocol[7]|=CLEAN_START;
-#else
-        if(_parent->_cleanSession) protocol[7]|=CLEAN_SESSION;
-#endif
+        // if((_parent->_cleanStart && !_parent->_haveSessionData()) || !H4AsyncMQTT::_outbound.size()) protocol[7]|=CLEAN_START;
+        if(!_parent->_haveSessionData()) protocol[7]|=CLEAN_START;
         // clientID --> Will properties --> wil lTopic --> willPayload --> username --> password
         _stringblock(_parent->_clientId);
         if(_parent->_will.topic.size()){
@@ -336,6 +363,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
         // [x] Add the properties to the length (property length) + store them
 
         // **Session Expiry Interval wont be used. 0 is the default value**
+        _propertyLength += 5; // SESSION EXPIRY INTERVAL
         _propertyLength += 3; // RECEIVE_MAXIMUM ID + 2 bytes
         _propertyLength += 5; // MAX PACKET SIZE ID + 4 bytes
         _propertyLength += 3; // TOPIC ALIAS MAXIMUM ID + 2 bytes
@@ -357,6 +385,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 
         _properties=[=](uint8_t* p){
             p = H4AMC_Helpers::encodeVariableByteInteger(p, _propertyLength);
+            p = MQTT_Properties::serializeProperty(PROPERTY_SESSION_EXPIRY_INTERVAL, p, MQTT_CONNECT_SESSION_EXPRITY_INTERVAL);
             p = MQTT_Properties::serializeProperty(PROPERTY_RECEIVE_MAXIMUM, p, MQTT_CONNECT_RECEIVE_MAXIMUM);
             p = MQTT_Properties::serializeProperty(PROPERTY_MAXIMUM_PACKET_SIZE, p, MQTT_CONNECT_MAX_PACKET_SIZE);
             p = MQTT_Properties::serializeProperty(PROPERTY_TOPIC_ALIAS_MAXIMUM, p, MQTT_CONNECT_TOPIC_ALIAS_MAX);
@@ -405,6 +434,15 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
         if(length < getMaxPayloadSize()){
 #if MQTT5
             auto& props = opts_retain.getProperties();
+#if H4AMC_ENABLE_CHECKS
+            auto& svrOpts = _parent->_serverOptions;
+            if (svrOpts->maximum_qos < _qos)
+                _qos=_parent->_serverOptions->maximum_qos,_hasId=_qos;
+            if (!svrOpts->retain_available && _retain) {
+                _notify(H4AMC_SERVER_RETAIN_UNAVAILABLE);
+                _retain=false; // Otherwise abort the publish...
+            }
+#endif
 #endif
             _begin=[&, this, topic]{ 
 
@@ -422,11 +460,8 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
                 // flags|=(_dup << 3);
             //
                 if(_qos) {
-                    // _id=_givenId ? _givenId:(++_parent->_nextId);
                     _id=++_parent->_nextId;
                     flags|=(_qos << 1);
-                    // _bs+=2; // because Packet id will be added (Is done through the constructor by passing _qos to _hasId parameter)
-                    // _hasId = true;
                 }
                 _controlcode|=flags;
 #if MQTT5
@@ -490,6 +525,6 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
             _build();
         } else {
             H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,getMaxPayloadSize());
-            _parent->_notify(H4AMC_OUTBOUND_PUB_TOO_BIG,length);
+            _notify(H4AMC_OUTBOUND_PUB_TOO_BIG,length);
         }
 }
