@@ -264,6 +264,8 @@ class H4AsyncMQTT {
                 std::map<uint16_t, std::string> _rx_topic_alias;
                 // std::map<std::string, uint16_t> _tx_topic_alias;
                 std::vector<std::string> _tx_topic_alias; // vector<string> because we manage it.
+                uint32_t            _inflight=0;
+                std::queue<uint16_t> _pending;
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
                 
                 H4AMC_SUBRES_MAP    _subsResources;
@@ -302,6 +304,15 @@ class H4AsyncMQTT {
                 void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
                 void                _ACKoutbound(uint16_t id){ _ACK(&_outbound,id,false); }
 
+                bool                _send(const uint8_t *data, uint32_t len, bool copy)
+                                    {
+                                        if (_h4atClient && _h4atClient->connected()){
+                                            _h4atClient->TX(data, len, copy);
+                                            return true;
+                                        }
+                                        return false;
+                                    }
+
                 void                _startClean();
                 void                _clearQQ(H4AMC_PACKET_MAP* m);
                 void                _startPinging(uint32_t keepalive=KEEP_ALIVE_INTERVAL);
@@ -325,6 +336,19 @@ class H4AsyncMQTT {
                 uint16_t            _assignTXAlias(const std::string& topic) { _tx_topic_alias.push_back(topic); return _tx_topic_alias.size()+1; }
                 uint16_t            _getTXAlias(const std::string& topic);
                 void                _clearAliases() { _tx_topic_alias.clear(), _rx_topic_alias.clear(); }
+                void                _runFlow() {
+                                        if (_pending.size() && _outbound.count(_pending.front())){
+                                            auto m = _outbound[_pending.front()];
+                                            _send(m.data, m.len, false);
+                                            _pending.pop();
+                                        }
+                                    }
+                void                _blockPublish(uint16_t id) { _pending.push(id); }
+                void                _publishEnd() { 
+                                        if (_pending.size()) _runFlow();
+                                        else _inflight--;
+                                        Serial.printf("_publishEnd _inflight %d\n", _inflight);
+                                    }
 #endif
                 void                _handlePacket(uint8_t* data, size_t len, int n_handled=0);
                 void                _handlePublish(mqttTraits T);

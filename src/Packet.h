@@ -67,7 +67,6 @@ class Packet {
 #endif
                 H4AsyncMQTT*     _parent;
                 uint16_t         _id=0; 
-                bool             _hasId=false;
                 uint8_t          _controlcode;
                 H4AMC_BLOCK_Q    _blox;
                 uint32_t         _bs=0;
@@ -76,7 +75,6 @@ class Packet {
                 H4AMC_FN_U8PTR   _protocolPayload=[](uint8_t* p,uint8_t* base){};
                 void	         _build();
                 void             _idGarbage(uint16_t id);
-                void             _initId();
                 void             _multiTopic(std::set<std::string> topix,H4AMC_SubscriptionOptions opts={});
                 uint8_t*         _poke16(uint8_t* p,uint16_t u);
                 void             _stringblock(const std::string& s);
@@ -84,7 +82,7 @@ class Packet {
                 uint8_t*         _applyfront(uint8_t* p);
         inline  void             _notify(H4AMC_FAILURE e, int i=0) { _parent->_notify(e,i); }
     public:
-        Packet(H4AsyncMQTT* p,uint8_t controlcode,bool hasid=false): _parent(p),_controlcode(controlcode),_hasId(hasid){}
+        Packet(H4AsyncMQTT* p,uint8_t controlcode): _parent(p),_controlcode(controlcode){}
 };
 
 class ConnectPacket: public Packet {
@@ -100,27 +98,27 @@ class ConnectPacket: public Packet {
 
 struct PubackPacket: public Packet {
     public:
-        PubackPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBACK,true) { _idGarbage(id); /* Dismiss Properties? */ }
+        PubackPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBACK) { _idGarbage(id); /* Dismiss Properties? */ }
 };
 class PubrecPacket: public Packet {
     public:
-        PubrecPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREC,true) { _idGarbage(id); }
+        PubrecPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREC) { _idGarbage(id); }
 };
 class PubrelPacket: public Packet {
     public:
-        PubrelPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREL,true) { _idGarbage(id); }
+        PubrelPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREL) { _idGarbage(id); }
 };
 class PubcompPacket: public Packet {
     public:
-        PubcompPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBCOMP,true) { _idGarbage(id); }  
+        PubcompPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBCOMP) { _idGarbage(id); }  
 };
 class SubscribePacket: public Packet {
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
     uint32_t subscription_id=0;
 #endif
     public:
-        SubscribePacket(H4AsyncMQTT* p,const std::string& topic,H4AMC_SubscriptionOptions opts): Packet(p,SUBSCRIBE,true) { _multiTopic({topic.data()},opts); }
-        SubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix,H4AMC_SubscriptionOptions opts): Packet(p,SUBSCRIBE,true) { _multiTopic(std::set<std::string>(topix.begin(), topix.end()),opts); }
+        SubscribePacket(H4AsyncMQTT* p,const std::string& topic,H4AMC_SubscriptionOptions opts): Packet(p,SUBSCRIBE) { _multiTopic({topic.data()},opts); }
+        SubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix,H4AMC_SubscriptionOptions opts): Packet(p,SUBSCRIBE) { _multiTopic(std::set<std::string>(topix.begin(), topix.end()),opts); }
         uint32_t    getId() { 
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
             return subscription_id;
@@ -133,9 +131,9 @@ class SubscribePacket: public Packet {
 
 class UnsubscribePacket: public Packet {
     public:
-        UnsubscribePacket(H4AsyncMQTT* p,const std::string& topic): Packet(p,UNSUBSCRIBE,true) { _multiTopic({topic.data()}); }
-        UnsubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix): Packet(p,UNSUBSCRIBE,true) { _multiTopic(std::set<std::string>(topix.begin(), topix.end())); }
-        UnsubscribePacket(H4AsyncMQTT* p,std::set<std::string> topix): Packet(p,UNSUBSCRIBE,true) { _multiTopic(topix); }
+        UnsubscribePacket(H4AsyncMQTT* p,const std::string& topic): Packet(p,UNSUBSCRIBE) { _multiTopic({topic.data()}); }
+        UnsubscribePacket(H4AsyncMQTT* p,std::initializer_list<const char*> topix): Packet(p,UNSUBSCRIBE) { _multiTopic(std::set<std::string>(topix.begin(), topix.end())); }
+        UnsubscribePacket(H4AsyncMQTT* p,std::set<std::string> topix): Packet(p,UNSUBSCRIBE) { _multiTopic(topix); }
 };
 
 class PublishPacket: public Packet {

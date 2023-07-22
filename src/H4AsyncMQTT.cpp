@@ -385,17 +385,17 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                     // _cleanStart = true;
                     _destroyClient();
                     return;
-                } else {
+                } else if (!session){
                     _startClean();
                 }
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
+                _resendPartialTxns(session); // Resend before _cbConnect to no resend the same publishes/subsribes .. [ ] We might check for _state afterwards.
                 if (_state == H4AMC_RUNNING && _cbMQTTConnect)
 #if MQTT5
                     _cbMQTTConnect({session,traits.properties->getUserProperties()});
 #else
                     _cbMQTTConnect(session);
 #endif
-                _resendPartialTxns(session);
 #if H4AMC_DEBUG
                 SubscribePacket pango(this,"pango",0); // internal info during beta...will be moved back inside debug #ifdef
 #endif
@@ -426,7 +426,8 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
 #if MQTT5
         if (rcode)
             _notify(traits.type==PUBACK?H4AMC_PUBACK_FAIL:H4AMC_PUBCOMP_FAIL, rcode);
-        // [ ] FLOW CONTROL .. DECREMENT inflight and send packets under holding.
+        // [x] FLOW CONTROL .. DECREMENT inflight and send packets under holding.
+        _publishEnd();
 #endif
         if (_cbPublish) _cbPublish(id);
     case UNSUBACK:
@@ -451,9 +452,10 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
 #if MQTT5
         if (rcode)
             _notify(H4AMC_PUBREC_FAIL, rcode);
-        if (rcode>=REASON_UNSPECIFIED_ERROR)// [ ] FLOW CONTROL .. Decrement inflight.
+        if (rcode>=REASON_UNSPECIFIED_ERROR)// [x] FLOW CONTROL .. Decrement inflight.
         {
             _ACKoutbound(id);
+            _publishEnd();
         }
         else
 #endif
@@ -744,7 +746,7 @@ void H4AsyncMQTT::_handlePublish(mqttTraits P){
 
 void H4AsyncMQTT::_notify(int e,int info){ 
     H4AMC_PRINT1("NOTIFY e=%d inf=%d\n",e,info);
-    if(_cbMQTTError) _cbMQTTError(e,info);
+    if((e||info) && _cbMQTTError) _cbMQTTError(e,info);
 }
 
 void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handleSession
@@ -798,15 +800,15 @@ void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,
 //
 //      PUBLIC
 //
-void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId/* ,bool clean */){
-    H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s,%d)\n",url,auth,pass,clientId/* ,clean */);
+void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,const char* clientId){
+    H4AMC_PRINT1("H4AsyncMQTT::connect(%s,%s,%s,%s)\n",url,auth,pass,clientId);
     if(_state==H4AMC_DISCONNECTED){
         // _h4atClient=new H4AsyncClient;
         _url=url;
         _username = auth;
         _password = pass;
         // _cleanStart = clean;
-        _clientId = "" ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION);
+        _clientId = (strlen(clientId) ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION));
         informNetworkState(H4AMC_NETWORK_CONNECTED); // Assume being called on Network Connect.
         _connect();
         H4AsyncClient::_scavenge();
@@ -856,7 +858,7 @@ void H4AsyncMQTT::setWill(const char* topic, uint8_t qos, const char* payload, H
 
 uint32_t H4AsyncMQTT::subscribe(const char* topic, H4AMC_SubscriptionOptions opts_qos) { return _runGuard([=](void){ SubscribePacket sub(this,topic,opts_qos); return sub.getId(); }, (uint32_t)0); }
 
-uint32_t H4AsyncMQTT::subscribe(std::initializer_list<const char*> topix, H4AMC_SubscriptionOptions opts_qos) { _runGuard([=]{ SubscribePacket sub(this,topix,opts_qos); return sub.getId(); }, (uint32_t)0); }
+uint32_t H4AsyncMQTT::subscribe(std::initializer_list<const char*> topix, H4AMC_SubscriptionOptions opts_qos) { return _runGuard([=]{ SubscribePacket sub(this,topix,opts_qos); return sub.getId(); }, (uint32_t)0); }
 
 void H4AsyncMQTT::unsubscribe(const char* topic) {_runGuard([=]{ UnsubscribePacket usp(this,topic); }); }
 

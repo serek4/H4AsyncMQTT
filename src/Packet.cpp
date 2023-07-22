@@ -105,7 +105,7 @@ uint8_t *Packet::__embedDynamicProps(uint8_t *p)
 void Packet::_build(){
 	uint8_t* virgin;
     _begin();
-    if(_hasId) _bs+=2;
+    if(_id) _bs+=2;
     // calc rl
     uint32_t X=_bs;
     std::vector<uint8_t> rl;
@@ -127,7 +127,8 @@ void Packet::_build(){
         _protocolPayload(snd_buf,virgin);
         auto isPublish = (_controlcode & 0xf0) == PUBLISH;
 #if H4AMC_DEBUG
-        if(!isPublish) mqttTraits traits(virgin,_bs);
+        // auto isSubUnsub = _controlcode != SUBSCRIBE && _controlcode != UNSUBSCRIBE;
+        if(_controlcode==CONNECT) mqttTraits traits(virgin,_bs); // Only print for ConnectPacket
 #endif
 #if MQTT5
         if (_parent->_serverOptions->maximum_packet_size < _bs) { // [ ] Apply in each packet by predicting the payload size and preventing user properties and reason strings??
@@ -137,11 +138,22 @@ void Packet::_build(){
             return;
         }
 #endif
-        // [ ] APPLY FLOW CONTROL if PUBLISH
-        if (_parent->_h4atClient->connected())
-            _parent->_h4atClient->TX(virgin,_bs,false);
-        else 
-            H4AMC_PRINT2("TCP UNCONNECTED!\n");
+        // [x] APPLY FLOW CONTROL if PUBLISH
+#if MQTT5
+        bool send=true;
+        if (isPublish && _id){
+            if (_parent->_inflight >= _parent->getServerOptions().receive_max){
+                send = false;
+                _parent->_blockPublish(_id);
+            }
+            else _parent->_inflight++;
+            Serial.printf("Flow control _inflight=%d\n", _parent->_inflight);
+        }        
+        if (send)
+#endif
+        
+        _parent->_send(virgin,_bs,false);
+
         if (isPublish && !_id) mbx::clear(virgin); // For QoS0
     } else _parent->_notify(ERR_MEM,_bs);
 }
@@ -264,13 +276,15 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
             p=_poke16(p,n);
             if (n) memcpy(p,t.data(),n);
             p+=n;
-            if(_controlcode==SUBSCRIBE) *p=opts.getQos();
+            if(_controlcode==SUBSCRIBE){
+                *p = opts.getQos();
 #if MQTT5
-            *p |= opts.getNoLocal() << SUBSCRIPTION_OPTION_NO_LOCAL_SHIFT;
-            *p |= opts.getRetainAsPublished() << SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED_SHIFT;
-            *p |= opts.getRetainHandling() << SUBSCRIPTION_OPTION_RETAIN_HANDLING_SHIFT;
+                *p |= opts.getNoLocal() << SUBSCRIPTION_OPTION_NO_LOCAL_SHIFT;
+                *p |= opts.getRetainAsPublished() << SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED_SHIFT;
+                *p |= opts.getRetainHandling() << SUBSCRIPTION_OPTION_RETAIN_HANDLING_SHIFT;
 #endif
-            *p++;
+                p++;
+            }
         }
         mqttTraits T(base,_bs);
         H4AsyncMQTT::_outbound[_id]=T;  // To be released on (UN)SUBACK
@@ -408,7 +422,8 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 
     _varHeader=[=](uint8_t* p){
         memcpy(p,&protocol,8);p+=8;
-        _poke16(p,_parent->_keepalive);
+        Serial.printf("_keepalive %u\n", _parent->_keepalive);
+        p=_poke16(p,_parent->_keepalive);
 #if MQTT5
         p=_properties(p);
 #endif
@@ -429,7 +444,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 }
 
 PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, const uint8_t* payload, size_t length, H4AMC_PublishOptions opts_retain):
-    _topic(topic),_qos(qos),_retain(opts_retain.getRetained()),_length(length),Packet(p,PUBLISH,_qos) {
+    _topic(topic),_qos(qos),_retain(opts_retain.getRetained()),_length(length),Packet(p,PUBLISH) {
 
         if(length < getMaxPayloadSize()){
 #if MQTT5
@@ -437,7 +452,7 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
 #if H4AMC_ENABLE_CHECKS
             auto& svrOpts = _parent->_serverOptions;
             if (svrOpts->maximum_qos < _qos)
-                _qos=_parent->_serverOptions->maximum_qos,_hasId=_qos;
+                _qos=_parent->_serverOptions->maximum_qos;
             if (!svrOpts->retain_available && _retain) {
                 _notify(H4AMC_SERVER_RETAIN_UNAVAILABLE);
                 _retain=false; // Otherwise abort the publish...
@@ -509,7 +524,7 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
             };
             _varHeader=[this](uint8_t* p_pos){ // To embed the Topic name.
                 p_pos = _applyfront(p_pos);
-                if(_hasId) p_pos=_poke16(p_pos,_id);
+                if(_id) p_pos=_poke16(p_pos,_id);
                 // Properties...
 #if MQTT5
                 p_pos=_properties(p_pos);

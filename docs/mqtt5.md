@@ -2,7 +2,7 @@
 
 The library provides a comprehensive support of MQTT 5.0 standard, including:
 For short, the MQTT 5.0 comes with features I'd prefer to bundle in those categories:
-- Publish features:
+- **Publish features:**
   The standard came out with a whole vector of improvements regarding publishes, which is Message Properties.
   The Properties are standardized ones that help describe the message and processing it. The standard highlighted those:
   - **Message expiry**: Runtime expiry interval setting per message publish, that will be discarded if expired.
@@ -22,14 +22,14 @@ For short, the MQTT 5.0 comes with features I'd prefer to bundle in those catego
   	In combination between Shared subscription and Subscription ID, a user is able to specify a custom callback for such a shared subscription.
   -  **Subscription options**: More options that customizes the subscription beside the QoS, "No Local" option causes the publishes that originates from the client not to be received, "Retain As Published" option does keep the retain flag as it was published, else would be cleared, "Retain Handling" option handles the reception of matching retained publishes at the time of subscribe, `0` Sends upon subscribe, `1` Sends upon subscribe only if the subscription doesn't currently exist, `2` Doesn't send any matching retained publishes. The library allows the setting of subscription options in `subscribe()` call, with defaults `No Local = 0`, `Retain As Published = 1`, and `Retain Handling = 1`.
 
-- Server-Concerning features:
+- **Server-Concerning features:**
   - **Session Expiry**: A configurable field tells the server when to remove the session upon a client goes offline. The client-side configuration is [configurable at compile-time](#configurations).
   - **Availability of Optional Server Features**: Runtime determination of Server's limits and features availability, such as: Maximum QoS, Retain, Wildcard Subscription, Subscription Identifier, and Shared Subscription. The library performs runtime checks of subscribe-related features, and manages the user publishes accordingly by decreasing of Publish QoS and Retain to the server's supplied option at CONNACK.
   - **Server disconnect**: The server now can issue disconnect packet to the client with optionally reason codes, strings, and other properties. The library handles with a notify to the user.
   - **Server reference**: Optionally the server can redirect the client to use another server, temporarily or permanently on CONNACK or DISCONNECT, and an optional mention of the Server reference. The library offers to the user to set a callback `onRedirect()` to [handle the redirection](#setting-callbacks-will-and-connect), the callback is optionally carries the server reference where supplied as an argument, until a good maturity level of utilizing this feature, the user has the responsibility of parsing and connecting with the other server.
   - **Server Keep Alive**: The server can override the client Keep Alive value. 
 
-- Overall Protocol improvements:
+- **Overall Protocol improvements:**
   -  **Topic Alias**: Does contribute in shortening packets size by mapping a numeric value to a topic string. The library performs an automatic management of topic aliases with respect to `MQTT5_RX_TOPIC_ALIAS_MAXIMUM`, `MQTT5_TX_TOPIC_ALIAS_MAXIMUM` [configurations](#configurations), and server's maximum.
   - **Reason Codes** accompanied with ACK packets: CONNACK, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBACK, UNSUBACK, DISCONNECT, and AUTH. *The library does handle or notify the user for such reason codes*.
   - **Optional Reason Strings** with ACK packets: String-based reasons made primarily for debugging. These strings are automatically printed to the Serial (Requires debug activated), user can receive them by setting a callback `onReason()`.
