@@ -79,8 +79,8 @@ void onMqttError(int e,int i){
 }
 H4_TIMER sender;
 
-void onMqttConnect() {
-  Serial.printf("USER: Connected as %s MP=%d\n",mqttClient.getClientId().data(),mqttClient.getMaxPayloadSize());
+void onMqttConnect(H4AMC_ConnackParam params) {
+  Serial.printf("USER: Connected as %s MP=%d\n",mqttClient.getClientId().data(),getMaxPayloadSize());
 
   Serial.println("USER: Subscribing at QoS 2");
   mqttClient.subscribe({"test","multi2","fully/compliant"}, 2);
@@ -98,8 +98,8 @@ void onMqttConnect() {
   });
 }
 
-void onMqttMessage(const char* topic, const uint8_t* payload, size_t len,uint8_t qos,bool retain,bool dup) {
-  Serial.printf("Receive: H=%u Message %s qos%d dup=%d retain=%d len=%d\n",_HAL_freeHeap(),topic,qos,dup,retain,len);
+void onMqttMessage(const char* topic, const uint8_t* payload, size_t len, H4AMC_MessageOptions opts) {
+	Serial.printf("Receive: H=%u Message %s qos%d dup=%d retain=%d len=%d\n",_HAL_freeHeap(),topic,opts.qos,opts.dup,opts.retain,len);
   //dumphex(payload,len);
   //Serial.println();
 }
@@ -115,7 +115,7 @@ void h4setup(){
   mqttClient.onDisconnect(onMqttDisconnect);
   mqttClient.onMessage(onMqttMessage);
 //  mqttClient.setServer(MQTT_URL,mqAuth,mqPass,cert);
-  mqttClient.setWill("DIED",2,false,"probably still some bugs");
+  mqttClient.setWill("DIED",2,"probably still some bugs",false);
 //  mqttClient.setKeepAlive(RECONNECT_DELAY_M *3); // very rarely need to change this (if ever)
   WiFi.begin("XXXXXXXX","XXXXXXXX");
   while(WiFi.status()!=WL_CONNECTED){

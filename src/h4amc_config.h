@@ -52,20 +52,25 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #define MQTT5_RX_TOPIC_ALIAS_MAXIMUM                    50
 #define MQTT5_TX_TOPIC_ALIAS_MAXIMUM                    50
 
+#define MQTT5_RX_MAX_PACKET_SIZE                        5200
+#define MQTT5_RECEIVE_MAXIMUM                           25
+#define MQTT5_SESSION_EXPIRY_INTERVAL                   3600
 
 
 // CONNECT Properties / Options
-#define MQTT_CONNECT_MAX_PACKET_SIZE  5200
-#define MQTT_CONNECT_RECEIVE_MAXIMUM   25
-#define MQTT_CONNECT_TOPIC_ALIAS_MAX   MQTT5_RX_TOPIC_ALIAS_MAXIMUM
-#define MQTT_CONNECT_SESSION_EXPRITY_INTERVAL 3600
-
-
 #define MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION       0
 #define MQTT_CONNECT_REQUEST_PROBLEM_INFORMATION        0
 
+// DONT CHANGE
+#define MQTT_CONNECT_MAX_PACKET_SIZE            MQTT5_RX_MAX_PACKET_SIZE
+#define MQTT_CONNECT_RECEIVE_MAXIMUM            MQTT5_RECEIVE_MAXIMUM
+#define MQTT_CONNECT_TOPIC_ALIAS_MAX            MQTT5_RX_TOPIC_ALIAS_MAXIMUM
+#define MQTT_CONNECT_SESSION_EXPRITY_INTERVAL   MQTT5_SESSION_EXPIRY_INTERVAL
 
-// SUBSCRIBE Properties / Options
+
+
+
+// SUBSCRIBE Default Options
 #define MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL               0 // Default behaviour for MQTT v3.3, and it's protocol error to set it to 1 for Shared Subscriptions in MQTT v5.0
 #define MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED    1
 #define MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING        1

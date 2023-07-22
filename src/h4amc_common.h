@@ -154,6 +154,10 @@ enum Subscription_Options {
     SUBSCRIPTION_OPTION_RETAIN_HANDLING_SHIFT         = 4
 };
 
+#define H4AMC_PAYLOAD_FORMAT_UNDEFINED      0x00
+#define H4AMC_PAYLOAD_FORMAT_STRING         0x01
+
+
 #else // MQTT5
 enum H4AMC_MQTT_ReasonCode : uint8_t {
     REASON_SUCCESS                          = 0x00,
@@ -174,19 +178,21 @@ namespace H4AMC_Helpers {
     uint8_t varBytesLength(uint32_t value);
 }
 class mqttTraits;
+struct H4AMC_MessageOptions;
+struct H4AMC_ConnackParam;
 using H4AMC_FN_VOID        	=std::function	<void(void)>;
 using H4AMC_FN_U8PTR       	=std::function	<void(uint8_t*,uint8_t* base)>;
 using H4AMC_FN_U8PTRU8     	=std::function	<uint8_t*(uint8_t*)>;
 using H4AMC_FN_STRING       =std::function	<void(const std::string&)>;
 using H4AMC_PACKET_MAP      =std::map		<uint16_t,mqttTraits>; // indexed by messageId
 using H4AMC_cbError         =std::function	<void(int, int)>;
-using H4AMC_cbMessage       =std::function	<void(const char* topic, const uint8_t* payload, size_t len,uint8_t qos,bool retain,bool dup)>;
+using H4AMC_cbMessage       =std::function	<void(const char* topic, const uint8_t* payload, size_t len, H4AMC_MessageOptions opts)>;
 using H4AMC_cbPublish 		=std::function	<void(uint16_t)>;
 using H4AMC_MEM_POOL        =std::unordered_set	<uint8_t*>;
+using H4AMC_cbConnect       =std::function	<void(H4AMC_ConnackParam)>; // in MQTT5
 #if MQTT5
-using USER_PROPERTIES_MAP 	=std::unordered_map <std::string,std::string>;
+using USER_PROPERTIES_MAP 	=H4T_NVP_MAP;
 using H4AMC_FN_DYN_PROPS 	=std::function	<USER_PROPERTIES_MAP(PacketHeader)>;
-using H4AMC_cbProperties    =std::function	<void(USER_PROPERTIES_MAP)>; // in MQTT5
 using H4AMC_AuthInformation = std::pair<H4AMC_MQTT_ReasonCode, std::pair<std::string, std::vector<uint8_t>>>;
 #endif
 

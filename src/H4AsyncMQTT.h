@@ -88,8 +88,9 @@ public:
                               H4AMC_cbMessage callback=nullptr,
                               bool no_local = MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL,
                               bool retain_as_published = MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED,
-                              uint8_t retain_handling = MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING) 
-                              : qos(QoS), cb(callback), nl(no_local), rap(retain_as_published), rh(retain_handling)
+                              uint8_t retain_handling = MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING,
+                              USER_PROPERTIES_MAP user_properties =USER_PROPERTIES_MAP{}) 
+                              : qos(QoS), cb(callback), nl(no_local), rap(retain_as_published), rh(retain_handling), user_properties(user_properties)
     {
     }
             bool                getNoLocal(){ return nl; }
@@ -103,34 +104,49 @@ public:
 };
 
 
-class H4AMC_PublishOptions {
-    bool retained;
+struct H4AMC_PublishOptions {
+    friend class H4AsyncMQTT;
+    bool retain;
 
+    H4AMC_PublishOptions(bool retain = false) : retain(retain) {}
+    bool getRetained() { return retain; }
 #if MQTT5
-    MQTT5PublishProperties props;
-#endif
-public:
-    H4AMC_PublishOptions(bool retained = false) : retained(retained) {}
-
-    bool getRetained() { return retained; }
-#if MQTT5
+    H4AMC_PublishOptions(MQTT5PublishProperties props, bool retain = false) : props(props), retain(retain) {}
     MQTT5PublishProperties& getProperties() { return props; }
+private:
+    MQTT5PublishProperties props;
 #endif
 };
 
 class H4AMC_WillOptions {
-    bool retained;
+    bool retain;
 
 #if MQTT5
     MQTT5WillProperties props;
 #endif
 public:
-    H4AMC_WillOptions(bool retained = false) : retained(retained) {}
+    H4AMC_WillOptions(bool retain = false) : retain(retain) {}
 
-    bool getRetained() { return retained; }
+    bool getRetained() { return retain; }
 #if MQTT5
     MQTT5WillProperties& getProperties() { return props; }
 #endif
+};
+struct H4AMC_MessageOptions : public H4AMC_PublishOptions {
+    uint8_t qos; // Is there an interest for the user to know qos/dup?
+    bool dup;
+    H4AMC_MessageOptions(uint8_t qos, bool retain, bool dup) : H4AMC_PublishOptions(retain), qos(qos), dup(dup) {}
+#if MQTT5
+    H4AMC_MessageOptions(uint8_t qos, bool retain, bool dup, MQTT5PublishProperties props) : H4AMC_PublishOptions(props, retain), qos(qos), dup(dup) {}
+#endif
+};
+struct H4AMC_ConnackParam {
+    bool session;
+#if MQTT5
+    USER_PROPERTIES_MAP connack_props;
+    H4AMC_ConnackParam(bool session, USER_PROPERTIES_MAP up) : session(session), connack_props(up){}
+#endif
+    H4AMC_ConnackParam(bool session) : session(session){}
 };
 
 class mqttTraits {             
@@ -237,7 +253,6 @@ class H4AsyncMQTT {
                 NetworkState        _networkState=H4AMC_NETWORK_CONNECTED;
                 uint32_t            _state=H4AMC_DISCONNECTED;
 #if MQTT5
-                H4AMC_cbProperties  _cbMQTTConnect=nullptr;
                 // bool                _cleanStart=true; // _forceCleanStart=true;
                 Server_Options*     _serverOptions=nullptr;
                 std::map<PacketHeader, std::shared_ptr<USER_PROPERTIES_MAP>> _user_static_props;                
@@ -259,11 +274,8 @@ class H4AsyncMQTT {
                 void                _confirmDeletion(uint32_t packId) { _subsResources.erase(_packSubIds[packId]); _packSubIds.erase(packId); }
 #endif
 
-                
-#else // MQTT5
-                H4AMC_FN_VOID       _cbMQTTConnect=nullptr;
-                bool                _cleanSession=true;
 #endif // MQTT5
+                H4AMC_cbConnect     _cbMQTTConnect=nullptr;
                 H4AMC_FN_VOID       _cbMQTTDisconnect=nullptr;
                 H4AMC_cbError       _cbMQTTError=nullptr;
                 H4AMC_cbMessage     _cbMessage=nullptr;
@@ -300,16 +312,19 @@ class H4AsyncMQTT {
                 void                _protocolError(H4AMC_MQTT_ReasonCode reason);
                 void                _handleConnackProps(MQTT_Properties& props);
                 void                _redirect(MQTT_Properties& props);
-                void                _addUserProp(PacketHeader header, std::shared_ptr<USER_PROPERTIES_MAP> nv) {
-                                        _user_static_props[header]=nv;
-                                    }
-                void                _addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f) {
-                                        _user_dynamic_props[header]=f;
-                                    }
                 void                _handleReasonString(MQTT_Properties& props) {
                                         if (_cbReason && props.isAvailable(PROPERTY_REASON_STRING))
                                             _cbReason(props.getStringProperty(PROPERTY_REASON_STRING));
                                     }
+
+                void                _addUserProp(PacketHeader header, std::shared_ptr<USER_PROPERTIES_MAP> nv)  { _user_static_props[header]=nv; }
+                void                _addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f)              { _user_dynamic_props[header]=f; }
+
+                bool                _isTXAliasAvailable(const std::string &topic) { auto& ta=_tx_topic_alias; return std::find(ta.begin(), ta.end(), topic) != ta.end(); } // For any fresh start, _tx_topic_alias is empty
+                bool                _availableTXAliasSpace();
+                uint16_t            _assignTXAlias(const std::string& topic) { _tx_topic_alias.push_back(topic); return _tx_topic_alias.size()+1; }
+                uint16_t            _getTXAlias(const std::string& topic);
+                void                _clearAliases() { _tx_topic_alias.clear(), _rx_topic_alias.clear(); }
 #endif
                 void                _handlePacket(uint8_t* data, size_t len, int n_handled=0);
                 void                _handlePublish(mqttTraits T);
@@ -332,29 +347,19 @@ class H4AsyncMQTT {
         static  std::string         errorstring(int e);
                 std::string         getClientId(){ return _assignedClientId.length() ? _assignedClientId : _clientId; }
                 void                onDisconnect(H4AMC_FN_VOID callback){ _cbMQTTDisconnect=callback; }
+                void                onConnect(H4AMC_cbConnect callback){ _cbMQTTConnect=callback; }
 #if MQTT5
-                void                onConnect(H4AMC_cbProperties callback){ _cbMQTTConnect=callback; }
                 void                onRedirect(H4AMC_FN_STRING f) { _cbRedirect=f; }
                 void                onReason(H4AMC_FN_STRING f) { _cbReason=f; }
                 void                setAuthenticator(H4Authenticator* authenticator) { _authenticator = authenticator; }
-                bool                availableTXAlias(const std::string &topic) { auto& ta=_tx_topic_alias; return std::find(ta.begin(), ta.end(), topic) != ta.end(); } // For any fresh start, _tx_topic_alias is empty
-                // bool                availableTXAlias(const std::string &topic) { return _tx_topic_alias.count(topic); } // For any fresh start, _tx_topic_alias is empty
-                bool                availableTXAliasSpace()
-                                    {
-                                        if (_serverOptions)
-                                            return _serverOptions->topic_alias_max > _tx_topic_alias.size();
-                                        _notify(0,H4AMC_NO_SERVEROPTIONS);
-                                        return false;
-                                    }
-                uint16_t            assignTXAlias(const std::string& topic) { _tx_topic_alias.push_back(topic); return _tx_topic_alias.size()+1; }
-                uint16_t            getTXAlias(const std::string& topic) { // [ ] Test operations.
-                                        auto& ta=_tx_topic_alias; 
-                                        auto it = std::find(ta.begin(), ta.end(), topic);
-                                        return std::distance(ta.begin(),it)+1;
-                                    }
-                void                clearAliases() { _tx_topic_alias.clear(), _rx_topic_alias.clear(); }
-#else
-                void                onConnect(H4AMC_FN_VOID callback){ _cbMQTTConnect=callback; }
+                Server_Options      getServerOptions() { return _serverOptions ? *_serverOptions : Server_Options(); }
+                // Valid for CONNECT, PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT, AUTH
+
+                bool                addUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties);
+                bool                addUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties);
+                bool                addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f);
+                bool                addDynamicUserProp(std::initializer_list<PacketHeader> headers, H4AMC_FN_DYN_PROPS f);
+                void                resetUserProps() { _user_static_props.clear(); _user_dynamic_props.clear(); }
 #endif
 
                 /* secureTLS
@@ -368,28 +373,37 @@ class H4AsyncMQTT {
                 void                onError(H4AMC_cbError callback){ _cbMQTTError=callback; }
                 void                onMessage(H4AMC_cbMessage callback){ _cbMessage=callback; }
                 void                onPublish(H4AMC_cbPublish callback){ _cbPublish=callback; }
-                uint16_t            publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0,  H4AMC_PublishOptions opts={});
-                uint16_t            publish(const char* topic,const char* payload, size_t length, uint8_t qos=0,  H4AMC_PublishOptions opts={});
+                uint16_t            publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0, H4AMC_PublishOptions opts={}); // Might embed qos inside opts.???
+                uint16_t            publish(const char* topic,const char* payload, size_t length, uint8_t qos=0, H4AMC_PublishOptions opts={});
+
+#if MQTT5
+#define CAST_TYPE   char
+#else
+#define CAST_TYPE   uint8_t
+#endif
                 template<typename T>
                 uint16_t publish(const char* topic,T v,const char* fmt="%d",uint8_t qos=0, H4AMC_PublishOptions opts={}){
                     char buf[16];
                     sprintf(buf,fmt,v);
-                    return publish(topic, reinterpret_cast<const uint8_t*>(buf), strlen(buf), qos, opts);
+                    return publish(topic, reinterpret_cast<const CAST_TYPE*>(buf), strlen(buf), qos, opts);
                 }
 //              Coalesce templates when C++17 available (if constexpr (x))
                 uint16_t xPublish(const char* topic,const char* value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
-                    return publish(topic,reinterpret_cast<const uint8_t*>(value),strlen(value),qos,opts);
+                    return publish(topic,reinterpret_cast<const CAST_TYPE*>(value),strlen(value),qos,opts);
                 }
                 uint16_t xPublish(const char* topic,String value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
-                    return publish(topic,reinterpret_cast<const uint8_t*>(value.c_str()),value.length(),qos,opts);
+                    return publish(topic,reinterpret_cast<const CAST_TYPE*>(value.c_str()),value.length(),qos,opts);
                 }
                 uint16_t xPublish(const char* topic,std::string value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
-                    return publish(topic,reinterpret_cast<const uint8_t*>(value.c_str()),value.size(),qos,opts);
+                    return publish(topic,reinterpret_cast<const CAST_TYPE*>(value.c_str()),value.size(),qos,opts);
                 }
                 template<typename T>
                 uint16_t xPublish(const char* topic,T value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
                     return publish(topic,reinterpret_cast<uint8_t*>(&value),sizeof(T),qos,opts);
                 }
+#ifdef CAST_TYPE
+#undef CAST_TYPE
+#endif
                 void xPayload(const uint8_t* payload,size_t len,char*& cp) {
                     char* p=reinterpret_cast<char*>(malloc(len+1));
                     memcpy(p,payload,len);
@@ -425,45 +439,6 @@ class H4AsyncMQTT {
                 void               unsubscribe(std::initializer_list<const char*> topix);
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
                 void               unsubscribe(uint32_t subscription_id);
-#endif
-#if MQTT5
-                // Valid for CONNECT, PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT, AUTH
-
-                bool addUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties){
-                    if (header == CONNACK || header == SUBACK || header == UNSUBACK)
-                        return false;
-                    // _user_static_props[header].push_back(std::pair<std::string, std::string>(key, value));
-                    // _user_static_props[header] = std::make_shared<std::pair<std::string, std::string>>(key, value);
-                    _addUserProp(header, std::make_shared<USER_PROPERTIES_MAP>(user_properties));
-                }
-                bool addUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties){
-                    for (auto header : headers)
-                        if (header == CONNACK || header == SUBACK || header == UNSUBACK)
-                            return false;
-                    
-                    auto shared = std::make_shared<USER_PROPERTIES_MAP>(user_properties);
-                    for(auto header : headers)
-                        _addUserProp(header, shared);
-                    return true;
-                }
-
-                bool addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f){
-                    if (header == CONNACK || header == SUBACK || header == UNSUBACK)
-                        return false;
-                    _addDynamicUserProp(header, f);
-                }
-                bool addDynamicUserProp(std::initializer_list<PacketHeader> headers, H4AMC_FN_DYN_PROPS f){
-                    for (auto header : headers)
-                        if (header == CONNACK || header == SUBACK || header == UNSUBACK)
-                            return false;
-                    
-                    for(auto header : headers)
-                        _addDynamicUserProp(header, f);
-                    return true;
-                }
-
-                
-                void resetUserProps() { _user_static_props.clear(); _user_dynamic_props.clear(); }
 #endif
 //
 //              DO NOT CALL ANY FUNCTION STARTING WITH UNDERSCORE!!! _

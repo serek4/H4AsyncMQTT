@@ -239,15 +239,25 @@ struct MQTT5MessageProperties {
     	std::string 			content_type;
     	std::string 			response_topic;
     	std::vector<uint8_t> 	correlation_data;
-    	H4T_NVP_MAP				user_properties;
+    	USER_PROPERTIES_MAP     user_properties;
         // void setPayloadIndicator(uint8_t payload_indicator) { payload_format_indicator = payload_indicator; }
         // void setMessageExpiry(uint32_t message_expiry) { message_expiry_interval = message_expiry; }
         // void setContentType(const std::string& content_type) { this->content_type=content_type; }
+        MQTT5MessageProperties(MQTT_Properties&props) : user_properties(props.getUserProperties()) {
+            if (props.isAvailable(PROPERTY_PAYLOAD_FORMAT_INDICATOR)) payload_format_indicator=props.getNumericProperty(PROPERTY_PAYLOAD_FORMAT_INDICATOR);
+            if (props.isAvailable(PROPERTY_MESSAGE_EXPIRY_INTERVAL)) message_expiry_interval=props.getNumericProperty(PROPERTY_MESSAGE_EXPIRY_INTERVAL);
+            if (props.isAvailable(PROPERTY_CONTENT_TYPE)) content_type=props.getStringProperty(PROPERTY_CONTENT_TYPE);
+            if (props.isAvailable(PROPERTY_RESPONSE_TOPIC)) content_type=props.getStringProperty(PROPERTY_RESPONSE_TOPIC);
+            if (props.isAvailable(PROPERTY_CORRELATION_DATA)) correlation_data=props.getBinaryProperty(PROPERTY_CORRELATION_DATA);
+        }
+        MQTT5MessageProperties(){}
 };
 struct MQTT5WillProperties : public MQTT5MessageProperties {
     uint32_t will_delay_interval;
 };
 struct MQTT5PublishProperties : public MQTT5MessageProperties {
+    MQTT5PublishProperties(MQTT_Properties& props) : MQTT5MessageProperties(props) {}
+    MQTT5PublishProperties(){}
 private:
 	friend class PublishPacket;
     uint16_t topic_alias=0;

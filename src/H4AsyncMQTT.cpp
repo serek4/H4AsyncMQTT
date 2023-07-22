@@ -206,7 +206,7 @@ void H4AsyncMQTT::_connect(){
         if(_state==H4AMC_RUNNING) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
         _state=H4AMC_DISCONNECTED;
 #if MQTT5
-        clearAliases(); // valid per network session
+        _clearAliases(); // valid per network session
 #endif
         _h4atClient = nullptr;
         _startReconnector();
@@ -281,6 +281,12 @@ void H4AsyncMQTT::_destroyClient() {
 }
 void H4AsyncMQTT::_hpDespatch(mqttTraits P){ 
     if(_cbMessage) {
+#if MQTT5
+        MQTT_Properties props{P.properties ? *(P.properties) : MQTT_Properties() };
+        H4AMC_MessageOptions opts(P.qos, P.retain, P.dup, props);
+#else
+        H4AMC_MessageOptions opts(P.qos, P.retain, P.dup);
+#endif
 #if H4AMC_DEBUG
         if(P.topic=="pango"){
             H4AMC_PRINT1("H4AMC INTERCEPTED\n");
@@ -307,13 +313,13 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
         auto& subIds=P.subscription_ids;
         for (auto subId : subIds) {
             if (_subsResources.count(subId)){
-                _subsResources[subId].cb(P.topic.data(), P.payload, P.plen, P.qos, P.retain, P.dup);
+                _subsResources[subId].cb(P.topic.data(), P.payload, P.plen, opts);
                 delivered=true;
             }
         }
         if (!delivered)
 #endif
-        _cbMessage(P.topic.data(), P.payload, P.plen, P.qos, P.retain, P.dup);
+        _cbMessage(P.topic.data(), P.payload, P.plen, opts);
         }
     }
 }
@@ -385,9 +391,9 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
                 if (_state == H4AMC_RUNNING && _cbMQTTConnect)
 #if MQTT5
-                    _cbMQTTConnect(traits.properties->getUserProperties());
+                    _cbMQTTConnect({session,traits.properties->getUserProperties()});
 #else
-                    _cbMQTTConnect();
+                    _cbMQTTConnect(session);
 #endif
                 _resendPartialTxns(session);
 #if H4AMC_DEBUG
@@ -573,9 +579,9 @@ void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
     _serverOptions = new Server_Options;
     for (auto &p : props.available_properties) {
         switch (p) {
-        // case PROPERTY_SESSION_EXPIRY_INTERVAL:
-        //     _serverOptions->session_expiry_interval = props.getNumericProperty(p);
-        //     break;
+        case PROPERTY_SESSION_EXPIRY_INTERVAL:
+            _serverOptions->session_expiry_interval = props.getNumericProperty(p);
+            break;
         case PROPERTY_RECEIVE_MAXIMUM:
             _serverOptions->receive_max = props.getNumericProperty(p);
             break;
@@ -635,7 +641,50 @@ void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
 //     props.dump();
 // #endif
 }
-#endif
+bool H4AsyncMQTT::_availableTXAliasSpace() {
+    if (_serverOptions)
+        return _serverOptions->topic_alias_max > _tx_topic_alias.size();
+    _notify(0,H4AMC_NO_SERVEROPTIONS);
+    return false;
+}
+uint16_t H4AsyncMQTT::_getTXAlias(const std::string& topic) { // [ ] Test operations.
+    auto& ta=_tx_topic_alias; 
+    auto it = std::find(ta.begin(), ta.end(), topic);
+    return std::distance(ta.begin(),it)+1;
+}
+
+bool H4AsyncMQTT::addUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties){
+    if (header == CONNACK || header == SUBACK || header == UNSUBACK)
+        return false;
+    _addUserProp(header, std::make_shared<USER_PROPERTIES_MAP>(user_properties));
+}
+
+bool H4AsyncMQTT::addUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties){
+    for (auto header : headers)
+        if (header == CONNACK || header == SUBACK || header == UNSUBACK)
+            return false;
+    auto shared = std::make_shared<USER_PROPERTIES_MAP>(user_properties);
+    for(auto header : headers)
+        _addUserProp(header, shared);
+    return true;
+}
+
+bool H4AsyncMQTT::addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f){
+    if (header == CONNACK || header == SUBACK || header == UNSUBACK)
+        return false;
+    _addDynamicUserProp(header, f);
+}
+
+bool H4AsyncMQTT::addDynamicUserProp(std::initializer_list<PacketHeader> headers, H4AMC_FN_DYN_PROPS f){
+    for (auto header : headers)
+        if (header == CONNACK || header == SUBACK || header == UNSUBACK)
+            return false;
+    
+    for(auto header : headers)
+        _addDynamicUserProp(header, f);
+    return true;
+}
+#endif // MQTT5
 
 void H4AsyncMQTT::_handlePublish(mqttTraits P){
     uint8_t qos=P.qos;
@@ -788,6 +837,9 @@ std::string H4AsyncMQTT::errorstring(int e){
 uint16_t H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { return _runGuard([=]{ PublishPacket pub(this,topic,qos,payload,length,opts_retain); return pub.getId(); }, (uint16_t)0); }
 
 uint16_t H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { 
+#if MQTT5
+    opts_retain.props.payload_format_indicator=H4AMC_PAYLOAD_FORMAT_STRING;
+#endif
     return publish(topic, reinterpret_cast<const uint8_t*>(payload), length, qos, opts_retain);
 }
 

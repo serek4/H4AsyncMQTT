@@ -447,7 +447,7 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
             _begin=[&, this, topic]{ 
 
 #if MQTT5
-                if (!_parent->availableTXAlias(_topic)) { //Fresh topic OR Server Topic Alias MAX got exceeded.
+                if (!_parent->_isTXAliasAvailable(_topic)) { //Fresh topic OR Server Topic Alias MAX got exceeded.
                     _stringblock(_topic);
                 } else {
                     _stringblock(std::string()); // Empty string.
@@ -468,10 +468,10 @@ PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, cons
             // [x] Add the properties to the length (property length) + store them
                 // [ ] ProposeTXAlias() and save it - on PUBACK/PUBREC confirmTXAlias()
                 // [ ] Make assigning topic aliases available only for QoS1 and QoS2 only. 
-                if (_parent->availableTXAlias(topic)) {
-                    props.topic_alias = _parent->getTXAlias(topic);
-                } else if (_parent->availableTXAliasSpace()) {
-                    props.topic_alias = _parent->assignTXAlias(topic);
+                if (_parent->_isTXAliasAvailable(topic)) {
+                    props.topic_alias = _parent->_getTXAlias(topic);
+                } else if (_parent->_availableTXAliasSpace()) {
+                    props.topic_alias = _parent->_assignTXAlias(topic);
                 }
 
                 if (props.payload_format_indicator) _propertyLength+=2; // 1B + 1
