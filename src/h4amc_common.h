@@ -190,6 +190,7 @@ using H4AMC_cbMessage       =std::function	<void(const char* topic, const uint8_
 using H4AMC_cbPublish 		=std::function	<void(uint16_t)>;
 using H4AMC_MEM_POOL        =std::unordered_set	<uint8_t*>;
 using H4AMC_cbConnect       =std::function	<void(H4AMC_ConnackParam)>; // in MQTT5
+using PacketID              =uint16_t;
 #if MQTT5
 using USER_PROPERTIES_MAP 	=H4T_NVP_MAP;
 using H4AMC_FN_DYN_PROPS 	=std::function	<USER_PROPERTIES_MAP(PacketHeader)>;

@@ -245,14 +245,19 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                     qos=(flags & 0x6) >> 1;
                     ii=i; // Work on a copy of original i=start();
                     topic=_decodestring(&ii);
+#if MQTT5
+                    if (!topic.length()) // For Inserting the topic out of Topic Alias.
+                        _topic_index=i-data; // Stands on Topic length.
+#endif
                     if(qos){ id=_peek16(ii);ii+=2; }
                     protocolpayload=ii;
 #if MQTT5
                     if (*ii) { // Properties (Property length field)
-                        Serial.printf("FOUND PROPS\n");
+                        H4AMC_PRINT4("FOUND PROPS\n");
                         auto ret = initiateProperties(ii);
                         if (!ret.first) {
                             protocolpayload = ret.second;
+                            _topic_alias=properties->getNumericProperty(PROPERTY_TOPIC_ALIAS);
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
                             auto subIds = properties->getNumericProperties(PROPERTY_SUBSCRIPTION_IDENTIFIER);
                             subscription_ids = std::set<uint32_t>{subIds.begin(), subIds.end()};
@@ -272,6 +277,7 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
     H4AMC_PRINT2(" Data @ %p len=%d RL=%d\n",data,len,remlen);
     H4AMC_DUMP4(data,len);
     switch(type){
+        case PINGRESP: break;
         case PUBACK:
         case PUBREC:
         case PUBREL:
@@ -300,6 +306,12 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                 H4AMC_PRINT3("  Session: %s\n",((cf & CLEAN_START) >> 1) ? "Clean":"Dirty");
                 H4AMC_PRINT3("  Keepalive: %d\n",_peek16(&data[10]));
                 uint8_t* sp=&data[12];
+#if MQTT5
+                // Connect Properties.
+                auto ret = initiateProperties(sp);
+                if (!ret.first) sp=ret.second;
+                
+#endif
                 H4AMC_PRINT3("  ClientId: %p %s\n",sp,_decodestring(&sp).data());
                 if(cf & WILL){
 #if MQTT5
@@ -372,7 +384,7 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                 H4AMC_PRINT3("  Topic: %s\n",topic.data());
                 H4AMC_PRINT3("  Payload size: %d\n",plen);
             }
-            else Serial.printf("WTF99999999999999999999999?\n");
+            else H4AMC_PRINT3("WTF99999999999999999999999?\n");
         }
         break;
     }

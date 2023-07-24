@@ -56,6 +56,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #define MQTT5_RECEIVE_MAXIMUM                           25
 #define MQTT5_SESSION_EXPIRY_INTERVAL                   3600
 
+#define H4AMC_MQTT5_INSERT_TOPIC_BY_ALIAS               1
 
 // CONNECT Properties / Options
 #define MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION       0

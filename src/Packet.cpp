@@ -131,7 +131,7 @@ void Packet::_build(){
         if(_controlcode==CONNECT) mqttTraits traits(virgin,_bs); // Only print for ConnectPacket
 #endif
 #if MQTT5
-        if (_parent->_serverOptions->maximum_packet_size < _bs) { // [ ] Apply in each packet by predicting the payload size and preventing user properties and reason strings??
+        if (_controlcode!=CONNECT && _controlcode!=AUTH && _parent->_serverOptions->maximum_packet_size < _bs) { // [ ] Apply in each packet by predicting the payload size and preventing user properties and reason strings??
             H4AMC_PRINT1("Server doesn't permit that size\n");
             _notify(H4AMC_OUTBOUND_PUB_TOO_BIG, _bs);
             /* if (!(isPublish && !_id))  */mbx::clear(virgin);
@@ -142,17 +142,11 @@ void Packet::_build(){
 #if MQTT5
         bool send=true;
         if (isPublish && _id){
-            if (_parent->_inflight >= _parent->getServerOptions().receive_max){
-                send = false;
-                _parent->_blockPublish(_id);
-            }
-            else _parent->_inflight++;
-            Serial.printf("Flow control _inflight=%d\n", _parent->_inflight);
+            send = _parent->_canPublishQoS(_id);
         }        
         if (send)
 #endif
-        
-        _parent->_send(virgin,_bs,false);
+        _parent->_send(virgin,_bs,isPublish && !_id || _controlcode==CONNECT); // Might also copy further for AUTH/DISCONNECT/...
 
         if (isPublish && !_id) mbx::clear(virgin); // For QoS0
     } else _parent->_notify(ERR_MEM,_bs);
@@ -165,7 +159,7 @@ void Packet::_idGarbage(uint16_t id){
 #if H4AMC_DEBUG
     mqttTraits(&G[0],4);
 #endif
-    _parent->_h4atClient->TX(&G[0],4,true);
+    _parent->_send(&G[0],4,true);
 }
 
 void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions opts){
@@ -344,6 +338,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
         if (props.correlation_data.size())  willPropLen += 3 + props.correlation_data.size();
         if (props.user_properties.size())   willPropLen += __fetchPassedProps(props.user_properties);
         _bs += willPropLen + H4AMC_Helpers::varBytesLength(willPropLen);
+        // Serial.printf("willPropLen=%d\n", willPropLen);
 
         if (willPropLen) {
             _willproperties = [&, willPropLen](uint8_t* p) {
@@ -422,7 +417,6 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 
     _varHeader=[=](uint8_t* p){
         memcpy(p,&protocol,8);p+=8;
-        Serial.printf("_keepalive %u\n", _parent->_keepalive);
         p=_poke16(p,_parent->_keepalive);
 #if MQTT5
         p=_properties(p);

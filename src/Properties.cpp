@@ -129,6 +129,7 @@ uint8_t* MQTT_Property_Binary::serialize(uint8_t* data){
 }
 void MQTT_Property_Binary::print(){
 #if H4AMC_DEBUG
+	H4AMC_PRINT2("\tProperty [%s] DUMP\n", mqttTraits::propnames[id]);
 	dumphex(value.data(),value.size());
 #endif
 }

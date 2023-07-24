@@ -131,7 +131,7 @@ H4AsyncMQTT::H4AsyncMQTT(){
 
 }
 
-void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout){ /// refakta?
+void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,PacketID id,bool inout){ /// refakta?
     if(m->count(id)){
         uint8_t* data=((*m)[id]).data;
         mbx::clear(data);
@@ -160,9 +160,7 @@ void H4AsyncMQTT::_startPinging(uint32_t keepalive)
     h4.every(_keepalive - H4AMC_HEADROOM,[=]{
         if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
             H4AMC_PRINT1("MQTT PINGREQ\n");
-            if (_h4atClient->connected())
-                _h4atClient->TX(PING, 2, false); /// optimise
-            else H4AMC_PRINT2("PING:TCP UNCONNECTED\n");
+            _send(PING, 2, false); /// optimise
         } //else Serial.printf("No ping: activity %d mS ago\n",(millis() - _h4atClient->_lastSeen));
     },nullptr,H4AMC_KA_ID,true);
 }
@@ -206,7 +204,8 @@ void H4AsyncMQTT::_connect(){
         if(_state==H4AMC_RUNNING) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
         _state=H4AMC_DISCONNECTED;
 #if MQTT5
-        _clearAliases(); // valid per network session
+        _pending={};
+        _inflight=0;
 #endif
         _h4atClient = nullptr;
         _startReconnector();
@@ -214,14 +213,7 @@ void H4AsyncMQTT::_connect(){
 
     _h4atClient->onError([=](int error,int info){
         H4AMC_PRINT1("onError %d info=%d\n",error,info);
-        /*
-        if(_state!=H4AMC_DISCONNECTED){
-            if(error==ERR_OK || error==ERR_RST || error==ERR_ABRT){
-//                Serial.printf("IGNORING OK RST ABRT e=%d\n",error);
-                _h4atClient->_shutdown();
-            } else _notify(error,info);
-        } //else Serial.printf("NOT CONNECTED!\n");
-        */
+        if(error||info) _notify(error,info);
         return true;
     });
 
@@ -276,7 +268,7 @@ void H4AsyncMQTT::_destroyClient() {
     H4AMC_PRINT1("DESTROY CLIENT\n");
     if (_h4atClient && _h4atClient->connected()) {
         _h4atClient->close(); // It all should be ending here
-    }// [ ] else _startReconnector(); // Should not be called ?
+    }
     _h4atClient=nullptr; // OR the callback?
 }
 void H4AsyncMQTT::_hpDespatch(mqttTraits P){ 
@@ -301,7 +293,7 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
                 Serial.printf("H4AMC Vn: %s\n",H4AMC_VERSION);
                 Serial.printf("NRETRIES: %d\n",H4AMC_MAX_RETRIES);
                 Serial.printf("start : %s\n",_haveSessionData() ? "clean":"dirty");
-                Serial.printf("clientID: %s\n",_clientId.data());
+                Serial.printf("clientID: %s\n",getClientId().data());
                 Serial.printf("keepaliv: %d\n",_keepalive);
             }
             else if(pl=="dump"){ dump(); }
@@ -325,12 +317,12 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
 }
 
 
-void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
+void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled, uint8_t* copy){
     H4AMC_DUMP4(data,len);
-    if(data[0]==PINGRESP){
-        H4AMC_PRINT1("MQTT %s\n",mqttTraits::pktnames[data[0]]);
-        return; // early bath
-    }
+    // if(data[0]==PINGRESP){ // THIS PREVENTS PROCESSING FURTHER MQTT PACKETS WITHIN A SHARED TCP PACKET.
+    //     H4AMC_PRINT1("MQTT %s\n",mqttTraits::pktnames[data[0]]);
+    //     return; // early bath
+    // }
 #if MQTT5
     if (len>MQTT_CONNECT_MAX_PACKET_SIZE) {
         H4AMC_PRINT1("LARGE inbound Packet size\n");
@@ -356,6 +348,8 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
 #endif
     auto rcode = traits.reasoncode;
     switch (traits.type){
+    case PINGRESP: 
+        break;
     case CONNACK:
     {
         switch (rcode)
@@ -390,6 +384,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
                 }
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
                 _resendPartialTxns(session); // Resend before _cbConnect to no resend the same publishes/subsribes .. [ ] We might check for _state afterwards.
+                _clearAliases();
                 if (_state == H4AMC_RUNNING && _cbMQTTConnect)
 #if MQTT5
                     _cbMQTTConnect({session,traits.properties->getUserProperties()});
@@ -411,7 +406,6 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         default:
             H4AMC_PRINT1("CONNACK %s\n",mqttTraits::rcnames[static_cast<H4AMC_MQTT_ReasonCode>(rcode)]);
             _startClean(); // If a Server sends a CONNACK packet containing a non-zero Reason Code it MUST set Session Present to 0
-            // [ ] Reconnect?? By the TCP scavenge mechanism...
 #else
         default: 
             H4AMC_PRINT1("CONNACK %s\n",mqttTraits::connacknames[rcode]);
@@ -545,15 +539,25 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled){
         if (traits.next.second)
         {
             H4AMC_PRINT4("Let's go round again! %p %d\n", traits.next.first, traits.next.second);
-            if (n_handled < 10)
+            if (n_handled < 10) // FOR LARGE VALUE AT DEBUG IT MAY CAUSE THREAD STACK OVERFLOW
                 _handlePacket(traits.next.first, traits.next.second, n_handled + 1);
             else
             { // Relay off to another call tree to avoid memory exhaustion / stack overflow / watchdog reset
                 H4AMC_PRINT4("Too many packets to handle, saving stack to another call tree\n");
+                auto data=traits.next.first;
+                auto len =traits.next.second;
+                if (!copy) { // Only copy once
+                    mbx m(traits.next.first, traits.next.second);
+                    copy=data=m.data;
+                    len=m.len;
+                    // Serial.printf("copy=%p\n", copy);
+                }
+
                 h4.queueFunction([=]()
-                                    { _handlePacket(traits.next.first, traits.next.second, 0); });
+                                    { _handlePacket(data, len, 0, copy); });
             }
         }
+        else if (copy) mbx::clear(copy); // Final packet
 }
 
 #if MQTT5
@@ -654,11 +658,66 @@ uint16_t H4AsyncMQTT::_getTXAlias(const std::string& topic) { // [ ] Test operat
     auto it = std::find(ta.begin(), ta.end(), topic);
     return std::distance(ta.begin(),it)+1;
 }
+#if H4AMC_MQTT5_INSERT_TOPIC_BY_ALIAS
+bool H4AsyncMQTT::_insertTopicAlias(mqttTraits& m)
+{
+    // [x] fetch topic
+    std::string topic = _getTXAliasTopic(m._topic_alias);
+    H4AMC_PRINT2("_insertTopicAlias %s %d alias %d\n", topic.c_str(), m._topic_index, m._topic_alias);
+    // H4AMC_DUMP4(m.data, m.len);
+    if (!topic.length() || !m._topic_index) {
+        H4AMC_PRINT2("MISSING TOPIC ALIAS OR POS! %d %d\n", m.id, m._topic_index);
+        return false;
+    }
+
+    // [x] insert topic
+    std::vector<uint8_t> copy; 
+    copy.reserve(m.len);
+
+    std::copy_n(m.data, m.len, std::back_inserter(copy));
+
+    auto rem_bytes = H4AMC_Helpers::varBytesLength(m.remlen);
+    m.remlen += topic.length();
+    auto diff_bytes = H4AMC_Helpers::varBytesLength(m.remlen) - rem_bytes;
+
+    auto ptr = mbx::realloc(m.data, m.len + topic.length() + diff_bytes);
+    if (ptr != nullptr){
+        m.data = ptr;
+        m.len += topic.length()+diff_bytes;
+
+        // Encode remlen to a buffer
+        uint8_t rembuf[rem_bytes+diff_bytes];
+        H4AMC_Helpers::encodeVariableByteInteger(rembuf, m.remlen);
+
+        // Replace remlen
+        for (int i=0;i<rem_bytes;i++) copy.erase(copy.begin()+1); // Remove current remlen
+        copy.insert(copy.begin()+1, rembuf, rembuf+rem_bytes+diff_bytes);
+
+        // Encode topic to a buffer
+        size_t addmeta=topic.length()+2;
+        uint8_t buf[addmeta];
+        H4AMC_Helpers::encodestring(&buf[0],topic);
+        
+        // Replace topic
+        copy.erase(copy.begin()+m._topic_index); // Erase Topic Length (Field0)
+        copy.erase(copy.begin()+m._topic_index); // Erase Topic Length (Field1)
+        copy.insert(copy.begin()+m._topic_index, buf, buf+addmeta);
+
+        std::copy_n(copy.begin(), m.len, m.data);
+        H4AMC_PRINT4("INSERTED TOPIC NEW BUFFER:\n");
+        H4AMC_DUMP4(m.data, m.len);
+        return true;
+    }
+
+    return false;
+}
+#endif
 
 bool H4AsyncMQTT::addUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties){
     if (header == CONNACK || header == SUBACK || header == UNSUBACK)
         return false;
     _addUserProp(header, std::make_shared<USER_PROPERTIES_MAP>(user_properties));
+    return true;
 }
 
 bool H4AsyncMQTT::addUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties){
@@ -675,6 +734,7 @@ bool H4AsyncMQTT::addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f){
     if (header == CONNACK || header == SUBACK || header == UNSUBACK)
         return false;
     _addDynamicUserProp(header, f);
+    return true;
 }
 
 bool H4AsyncMQTT::addDynamicUserProp(std::initializer_list<PacketHeader> headers, H4AMC_FN_DYN_PROPS f){
@@ -753,6 +813,7 @@ void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handle
     // Check whether the messages are outdated...
     // OR regularly resend them...?
     std::vector<uint16_t> morituri;
+    H4AMC_PACKET_MAP copy;
     for(auto const& o:_outbound){
         mqttTraits m=o.second;
         if(--(m.retries)){
@@ -767,12 +828,31 @@ void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handle
                 if (m.isPublish()) {  // set dup & resend ONLY for PUBlISH packets (..?)
                     H4AMC_PRINT4("SET DUP %d\n", m.id);
                     m.data[0] |= 0x08;
+#if MQTT5
+                    if (!m.topic.length()) {
+#if H4AMC_MQTT5_INSERT_TOPIC_BY_ALIAS
+                        if (_insertTopicAlias(m)) copy[m.id]=m;
+                        else
+#endif
+                        {
+                            morituri.push_back(m.id);
+                            break;
+                        }
+                    }
+#endif
                 }
                 H4AMC_PRINT4("RESEND %d\n", m.id);
                 H4AMC_DUMP4(m.data, m.len);
-                if (_h4atClient->connected())
-                    _h4atClient->TX(m.data,m.len,false); // [ ] Concatenate all messages
-                else H4AMC_PRINT2("TCP DISCONNECTED!\n");
+#if MQTT5
+                bool send=true;
+
+                if (m.isPublish() && m.id){
+                    send=_canPublishQoS(m.id);
+                }        
+                if (send)
+#endif
+
+                _send(m.data,m.len,false); // [ ] Concatenate all messages
             }
         }
         else {
@@ -781,6 +861,7 @@ void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handle
         }
     }
     for(auto const& i:morituri) _ACKoutbound(i);
+    for(auto const& c:copy) _outbound[c.first]=c.second;
 
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
     if (!availSession) {

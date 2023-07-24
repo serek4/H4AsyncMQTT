@@ -74,9 +74,9 @@ struct SubscriptionResource {
 class H4AMC_SubscriptionOptions {
     uint8_t qos;
 #if MQTT5
-    bool nl;
-    bool rap;
-    uint8_t rh;
+    bool nl=MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL;
+    bool rap=MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED;
+    uint8_t rh=MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING;
     H4AMC_cbMessage cb;
     USER_PROPERTIES_MAP user_properties;
 #endif
@@ -165,7 +165,7 @@ class mqttTraits {
                 uint8_t*        data;
                 size_t          len;
                 uint8_t         type;
-                uint16_t        id=0;
+                PacketID        id=0;
                 uint8_t         qos=0;
                 bool            dup;
                 bool            retain;
@@ -179,6 +179,8 @@ class mqttTraits {
                 std::vector<uint8_t> subreasons;
                 uint8_t         reasoncode=0;
 #if MQTT5
+                uint32_t        _topic_index=0;
+                uint16_t        _topic_alias=0;
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
                 std::set<uint32_t> subscription_ids;
 #endif
@@ -265,7 +267,7 @@ class H4AsyncMQTT {
                 // std::map<std::string, uint16_t> _tx_topic_alias;
                 std::vector<std::string> _tx_topic_alias; // vector<string> because we manage it.
                 uint32_t            _inflight=0;
-                std::queue<uint16_t> _pending;
+                std::queue<PacketID> _pending;
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
                 
                 H4AMC_SUBRES_MAP    _subsResources;
@@ -301,12 +303,14 @@ class H4AsyncMQTT {
                 std::vector<uint8_t> _clientCert;
 #endif
                
-                void                _ACK(H4AMC_PACKET_MAP* m,uint16_t id,bool inout); // inout true=INBOUND false=OUTBOUND
-                void                _ACKoutbound(uint16_t id){ _ACK(&_outbound,id,false); }
+                void                _ACK(H4AMC_PACKET_MAP* m,PacketID id,bool inout); // inout true=INBOUND false=OUTBOUND
+                void                _ACKoutbound(PacketID id){ _ACK(&_outbound,id,false); }
 
                 bool                _send(const uint8_t *data, uint32_t len, bool copy)
                                     {
-                                        if (_h4atClient && _h4atClient->connected()){
+                                        // [ ] Concatenate meaaages (optional)
+                                        H4AMC_PRINT4("_send(%p,%u,%d)\n", data,len,copy);
+                                        if (_state==H4AMC_RUNNING || _state==H4AMC_TCP_CONNECTED){
                                             _h4atClient->TX(data, len, copy);
                                             return true;
                                         }
@@ -333,24 +337,42 @@ class H4AsyncMQTT {
 
                 bool                _isTXAliasAvailable(const std::string &topic) { auto& ta=_tx_topic_alias; return std::find(ta.begin(), ta.end(), topic) != ta.end(); } // For any fresh start, _tx_topic_alias is empty
                 bool                _availableTXAliasSpace();
-                uint16_t            _assignTXAlias(const std::string& topic) { _tx_topic_alias.push_back(topic); return _tx_topic_alias.size()+1; }
+                uint16_t            _assignTXAlias(const std::string& topic) { _tx_topic_alias.push_back(topic); return _tx_topic_alias.size(); }
                 uint16_t            _getTXAlias(const std::string& topic);
+                std::string         _getTXAliasTopic(uint16_t alias) { return (alias>_tx_topic_alias.size() || !alias) ? "" : _tx_topic_alias[alias-1]; }
                 void                _clearAliases() { _tx_topic_alias.clear(), _rx_topic_alias.clear(); }
+#if H4AMC_MQTT5_INSERT_TOPIC_BY_ALIAS
+                // Makes an anatomy to the to-send-data, inserting topic name and remaining length.
+                bool                _insertTopicAlias(mqttTraits& m);
+#endif
                 void                _runFlow() {
                                         if (_pending.size() && _outbound.count(_pending.front())){
                                             auto m = _outbound[_pending.front()];
+                                            H4AMC_PRINT4("RUN FLOW %d\n", m.id);
                                             _send(m.data, m.len, false);
                                             _pending.pop();
                                         }
                                     }
-                void                _blockPublish(uint16_t id) { _pending.push(id); }
+                void                _blockPublish(PacketID id) { 
+                                        H4AMC_PRINT4("BLOCK PUB %d\n", id); 
+                                        _pending.push(id); 
+                                    }
                 void                _publishEnd() { 
                                         if (_pending.size()) _runFlow();
                                         else _inflight--;
-                                        Serial.printf("_publishEnd _inflight %d\n", _inflight);
+                                        H4AMC_PRINT4("_publishEnd _inflight %d\n", _inflight);
+                                    }
+                bool                _canPublishQoS(PacketID id) {
+                                        H4AMC_PRINT4("_canPublishQoS(%d) _inflight=%d rmax=%d\n", id, _inflight, getServerOptions().receive_max);
+                                        if (_inflight >= getServerOptions().receive_max){
+                                            _blockPublish(id);
+                                            return false;
+                                        }
+                                        _inflight++;
+                                        return true;
                                     }
 #endif
-                void                _handlePacket(uint8_t* data, size_t len, int n_handled=0);
+                void                _handlePacket(uint8_t* data, size_t len, int n_handled=0, uint8_t* copy=nullptr);
                 void                _handlePublish(mqttTraits T);
         inline  void                _hpDespatch(mqttTraits T);
         // inline  void                _hpDespatch(uint16_t id);

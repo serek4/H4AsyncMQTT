@@ -66,7 +66,7 @@ class Packet {
                 }
 #endif
                 H4AsyncMQTT*     _parent;
-                uint16_t         _id=0; 
+                PacketID         _id=0; 
                 uint8_t          _controlcode;
                 H4AMC_BLOCK_Q    _blox;
                 uint32_t         _bs=0;
@@ -74,7 +74,7 @@ class Packet {
                 H4AMC_FN_U8PTRU8 _varHeader=[](uint8_t* p){ return p; };
                 H4AMC_FN_U8PTR   _protocolPayload=[](uint8_t* p,uint8_t* base){};
                 void	         _build();
-                void             _idGarbage(uint16_t id);
+                void             _idGarbage(PacketID id);
                 void             _multiTopic(std::set<std::string> topix,H4AMC_SubscriptionOptions opts={});
                 uint8_t*         _poke16(uint8_t* p,uint16_t u);
                 void             _stringblock(const std::string& s);
@@ -98,19 +98,19 @@ class ConnectPacket: public Packet {
 
 struct PubackPacket: public Packet {
     public:
-        PubackPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBACK) { _idGarbage(id); /* Dismiss Properties? */ }
+        PubackPacket(H4AsyncMQTT* p,PacketID id): Packet(p,PUBACK) { _idGarbage(id); /* Dismiss Properties? */ }
 };
 class PubrecPacket: public Packet {
     public:
-        PubrecPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREC) { _idGarbage(id); }
+        PubrecPacket(H4AsyncMQTT* p,PacketID id): Packet(p,PUBREC) { _idGarbage(id); }
 };
 class PubrelPacket: public Packet {
     public:
-        PubrelPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBREL) { _idGarbage(id); }
+        PubrelPacket(H4AsyncMQTT* p,PacketID id): Packet(p,PUBREL) { _idGarbage(id); }
 };
 class PubcompPacket: public Packet {
     public:
-        PubcompPacket(H4AsyncMQTT* p,uint16_t id): Packet(p,PUBCOMP) { _idGarbage(id); }  
+        PubcompPacket(H4AsyncMQTT* p,PacketID id): Packet(p,PUBCOMP) { _idGarbage(id); }  
 };
 class SubscribePacket: public Packet {
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
@@ -144,5 +144,5 @@ class PublishPacket: public Packet {
         // bool            _dup;
     public:
         PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, const uint8_t* payload, size_t length, H4AMC_PublishOptions opts_retain);
-        uint16_t getId(){ return _id; }
+        PacketID getId(){ return _id; }
 };
