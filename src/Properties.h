@@ -118,10 +118,10 @@ struct MQTT_Property_Bool : public MQTT_Property_Numeric_1B {
     MQTT_Property_Binary(H4AMC_MQTT5_Property i):MQTT_Property(i){}
 
 }; */
-struct MQTT_Property_Binary : public MQTT_Property<std::vector<uint8_t>> {
-    std::vector<uint8_t> value;
+struct MQTT_Property_Binary : public MQTT_Property<H4AMC_BinaryData> {
+    H4AMC_BinaryData value;
     uint8_t* parse (uint8_t* data) override;
-    uint8_t* serialize(uint8_t* data, std::vector<uint8_t> value) override;
+    uint8_t* serialize(uint8_t* data, H4AMC_BinaryData value) override;
     uint8_t* serialize(uint8_t* data) override;
     void print() override;
     MQTT_Property_Binary(H4AMC_MQTT5_Property i):MQTT_Property(i){}
@@ -202,14 +202,14 @@ public:
 				std::string 				getStringProperty(H4AMC_MQTT5_Property p);
     			uint32_t 					getNumericProperty(H4AMC_MQTT5_Property p);
                 std::vector<uint32_t>       getNumericProperties(H4AMC_MQTT5_Property p);
-                std::vector<uint8_t>        getBinaryProperty(H4AMC_MQTT5_Property p);
+                H4AMC_BinaryData            getBinaryProperty(H4AMC_MQTT5_Property p);
 
 				bool 						isAvailable(H4AMC_MQTT5_Property p);
 
     // Make a template for this??
 		static 	uint8_t* 					serializeProperty(H4AMC_MQTT5_Property p, uint8_t *data, uint32_t value);
 		static 	uint8_t* 					serializeProperty(H4AMC_MQTT5_Property p, uint8_t *data, std::string value);
-		static 	uint8_t* 					serializeProperty(H4AMC_MQTT5_Property p, uint8_t* data, std::vector<uint8_t> value);
+		static 	uint8_t* 					serializeProperty(H4AMC_MQTT5_Property p, uint8_t* data, H4AMC_BinaryData value);
 
 		static 	uint8_t* 					serializeUserProperty(uint8_t *data, MQTT_PROP_STRPAIR& value);
 		static 	uint8_t* 					serializeUserProperties(uint8_t *data, USER_PROPERTIES_MAP& map);
@@ -225,9 +225,9 @@ public:
 		for (auto& p:binary_props)
 			p.print();
 		if (user_properties.size()){
-			H4AMC_PRINT1("USER PROPERTIES %d:\n", user_properties.size());
+			H4AMC_PRINT1("\tUSER PROPERTIES %d:\n", user_properties.size());
 			for (auto& p:user_properties)
-				H4AMC_PRINT1("\"%s\":\"%s\"\n", p.first.c_str(), p.second.c_str());
+				H4AMC_PRINT1("\t\t\"%s\":\"%s\"\n", p.first.c_str(), p.second.c_str());
 		}
 	}
 #endif
@@ -238,7 +238,7 @@ struct MQTT5MessageProperties {
     	uint32_t 				message_expiry_interval;
     	std::string 			content_type;
     	std::string 			response_topic;
-    	std::vector<uint8_t> 	correlation_data;
+    	H4AMC_BinaryData 	    correlation_data;
     	USER_PROPERTIES_MAP     user_properties;
         // void setPayloadIndicator(uint8_t payload_indicator) { payload_format_indicator = payload_indicator; }
         // void setMessageExpiry(uint32_t message_expiry) { message_expiry_interval = message_expiry; }
@@ -247,7 +247,7 @@ struct MQTT5MessageProperties {
             if (props.isAvailable(PROPERTY_PAYLOAD_FORMAT_INDICATOR)) payload_format_indicator=props.getNumericProperty(PROPERTY_PAYLOAD_FORMAT_INDICATOR);
             if (props.isAvailable(PROPERTY_MESSAGE_EXPIRY_INTERVAL)) message_expiry_interval=props.getNumericProperty(PROPERTY_MESSAGE_EXPIRY_INTERVAL);
             if (props.isAvailable(PROPERTY_CONTENT_TYPE)) content_type=props.getStringProperty(PROPERTY_CONTENT_TYPE);
-            if (props.isAvailable(PROPERTY_RESPONSE_TOPIC)) content_type=props.getStringProperty(PROPERTY_RESPONSE_TOPIC);
+            if (props.isAvailable(PROPERTY_RESPONSE_TOPIC)) response_topic=props.getStringProperty(PROPERTY_RESPONSE_TOPIC);
             if (props.isAvailable(PROPERTY_CORRELATION_DATA)) correlation_data=props.getBinaryProperty(PROPERTY_CORRELATION_DATA);
         }
         MQTT5MessageProperties(){}
@@ -257,7 +257,19 @@ struct MQTT5WillProperties : public MQTT5MessageProperties {
 };
 struct MQTT5PublishProperties : public MQTT5MessageProperties {
     MQTT5PublishProperties(MQTT_Properties& props) : MQTT5MessageProperties(props) {}
-    MQTT5PublishProperties(){}
+    MQTT5PublishProperties(uint8_t indicator = 0, uint32_t expiry = 0, const std::string &contype = {},
+                           const std::string &resptopic = {}, H4AMC_BinaryData correlation = {},
+                           USER_PROPERTIES_MAP props = {})
+    {
+            payload_format_indicator = indicator;
+            message_expiry_interval = expiry;
+            content_type = contype;
+            response_topic = resptopic;
+            correlation_data = correlation;
+            user_properties=props;
+    }
+
+    // MQTT5PublishProperties(){}
 private:
 	friend class PublishPacket;
     uint16_t topic_alias=0;

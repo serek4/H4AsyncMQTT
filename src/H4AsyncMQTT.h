@@ -297,10 +297,10 @@ class H4AsyncMQTT {
                 std::string         _username;
                 WillMessage         _will;
 #if H4AT_TLS
-                std::vector<uint8_t> _caCert;
-                std::vector<uint8_t> _privkey;
-                std::vector<uint8_t> _privkeyPass;
-                std::vector<uint8_t> _clientCert;
+                H4AMC_BinaryData    _caCert;
+                H4AMC_BinaryData    _privkey;
+                H4AMC_BinaryData    _privkeyPass;
+                H4AMC_BinaryData    _clientCert;
 #endif
                
                 void                _ACK(H4AMC_PACKET_MAP* m,PacketID id,bool inout); // inout true=INBOUND false=OUTBOUND
@@ -395,14 +395,15 @@ class H4AsyncMQTT {
                 void                onDisconnect(H4AMC_FN_VOID callback){ _cbMQTTDisconnect=callback; }
                 void                onConnect(H4AMC_cbConnect callback){ _cbMQTTConnect=callback; }
 #if MQTT5
+        static  void                printUserProperty(USER_PROPERTIES_MAP& props) { for (auto p:props) Serial.printf("%s:%s\n", p.first.c_str(), p.second.c_str());}
                 void                onRedirect(H4AMC_FN_STRING f) { _cbRedirect=f; }
                 void                onReason(H4AMC_FN_STRING f) { _cbReason=f; }
                 void                setAuthenticator(H4Authenticator* authenticator) { _authenticator = authenticator; }
                 Server_Options      getServerOptions() { return _serverOptions ? *_serverOptions : Server_Options(); }
                 // Valid for CONNECT, PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT, AUTH
 
-                bool                addUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties);
-                bool                addUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties);
+                bool                addStaticUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties);
+                bool                addStaticUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties);
                 bool                addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f);
                 bool                addDynamicUserProp(std::initializer_list<PacketHeader> headers, H4AMC_FN_DYN_PROPS f);
                 void                resetUserProps() { _user_static_props.clear(); _user_dynamic_props.clear(); }
@@ -517,11 +518,11 @@ class SCRAM_Authenticator : protected H4Authenticator {
                 // SERVER_FINAL_RECEIVED,
                 COMPLETE
             } state;
-            std::vector<uint8_t> _client_first;
+            H4AMC_BinaryData    _client_first;
                     H4AMC_AuthInformation           start() override;
                     H4AMC_AuthInformation           handle(H4AMC_AuthInformation data) override;
     public:
-            SCRAM_Authenticator(std::vector<uint8_t> client_first, std::string method_name="SCRAM-SHA-1") : H4Authenticator(method_name),  _client_first(client_first) {}
+            SCRAM_Authenticator(H4AMC_BinaryData client_first, std::string method_name="SCRAM-SHA-1") : H4Authenticator(method_name),  _client_first(client_first) {}
 
 };
 class KERBEROS_Authenticator : protected H4Authenticator {

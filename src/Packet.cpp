@@ -51,7 +51,10 @@ uint32_t Packet::__fetchPassedProps(USER_PROPERTIES_MAP &props)
 
 uint32_t Packet::__fetchStaticProps()
 {
+    auto isPublish = (_controlcode & 0xf0) == PUBLISH;
+
     auto header = static_cast<PacketHeader>(_controlcode);
+    if (isPublish) header=PUBLISH;
     if (_parent->_user_static_props.count(header)){
         auto u_props = *(_parent->_user_static_props[header]);
         return __fetchSize(u_props);
@@ -61,9 +64,11 @@ uint32_t Packet::__fetchStaticProps()
 
 uint32_t Packet::__fetchDynamicProps()
 {
+    auto isPublish = (_controlcode & 0xf0) == PUBLISH;
     auto header = static_cast<PacketHeader>(_controlcode);
+    if (isPublish) header=PUBLISH;
     if (_parent->_user_dynamic_props.count(header)) {
-        auto cbDynamic = _parent->_user_dynamic_props[header];
+        auto &cbDynamic = _parent->_user_dynamic_props[header];
         _dynProps = std::make_shared<USER_PROPERTIES_MAP>(cbDynamic(header));
         return __fetchSize(*_dynProps);
     }
@@ -86,7 +91,9 @@ uint8_t *Packet::__embedPassedProps(uint8_t *p, USER_PROPERTIES_MAP &props)
 
 uint8_t *Packet::__embedStaticProps(uint8_t *p)
 {
+    auto isPublish = (_controlcode & 0xf0) == PUBLISH;
     auto header = static_cast<PacketHeader>(_controlcode);
+    if (isPublish) header=PUBLISH;
     if (_parent->_user_static_props.count(header)) {
         p=__embedProps(p,*_parent->_user_static_props[header]);
     }

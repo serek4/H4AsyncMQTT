@@ -166,13 +166,14 @@ enum H4AMC_MQTT_ReasonCode : uint8_t {
 #endif // MQTT5
 
 
+using H4AMC_BinaryData            =std::vector<uint8_t>;
 namespace H4AMC_Helpers {
     uint8_t* poke16(uint8_t* p,uint16_t u);
     uint16_t peek16(uint8_t* p);
     uint8_t* encodestring(uint8_t* p,const std::string& s);
     std::string decodestring(uint8_t** p);
-    uint8_t* encodeBinary(uint8_t* p, const std::vector<uint8_t>&);
-    std::vector<uint8_t> decodeBinary(uint8_t** p);
+    uint8_t* encodeBinary(uint8_t* p, const H4AMC_BinaryData&);
+    H4AMC_BinaryData decodeBinary(uint8_t** p);
     uint32_t decodeVariableByteInteger(uint8_t** p);
     uint8_t* encodeVariableByteInteger(uint8_t* p, uint32_t value);
     uint8_t varBytesLength(uint32_t value);
@@ -194,7 +195,7 @@ using PacketID              =uint16_t;
 #if MQTT5
 using USER_PROPERTIES_MAP 	=H4T_NVP_MAP;
 using H4AMC_FN_DYN_PROPS 	=std::function	<USER_PROPERTIES_MAP(PacketHeader)>;
-using H4AMC_AuthInformation = std::pair<H4AMC_MQTT_ReasonCode, std::pair<std::string, std::vector<uint8_t>>>;
+using H4AMC_AuthInformation = std::pair<H4AMC_MQTT_ReasonCode, std::pair<std::string, H4AMC_BinaryData>>;
 #endif
 
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT

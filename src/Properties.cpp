@@ -119,7 +119,7 @@ uint8_t* MQTT_Property_Binary::parse (uint8_t* data){
 	value = H4AMC_Helpers::decodeBinary(&data);
 	return data;
 }
-uint8_t* MQTT_Property_Binary::serialize(uint8_t* data, std::vector<uint8_t> value){
+uint8_t* MQTT_Property_Binary::serialize(uint8_t* data, H4AMC_BinaryData value){
 	this->value = value;
 	return serialize(data);
 }
@@ -256,7 +256,7 @@ uint8_t* MQTT_Properties::serializeProperty(H4AMC_MQTT5_Property p, uint8_t *dat
 	}
 	return data;
 }
-uint8_t* MQTT_Properties::serializeProperty(H4AMC_MQTT5_Property p, uint8_t* data, std::vector<uint8_t> value)
+uint8_t* MQTT_Properties::serializeProperty(H4AMC_MQTT5_Property p, uint8_t* data, H4AMC_BinaryData value)
 {
 	switch (p)
 	{
@@ -419,7 +419,7 @@ MQTT_PROP_PARSERET MQTT_Properties::parseProperties(uint8_t* data) {
 			break;
 		}
 		default:
-			H4AMC_PRINT1("Invalid property: %02X", prop_id);
+			H4AMC_PRINT1("Invalid property: %02X\n", prop_id);
 			available_properties.pop_back();
 			return std::make_pair(REASON_PROTOCOL_ERROR,data);
 		}
@@ -454,12 +454,12 @@ std::vector<uint32_t> MQTT_Properties::getNumericProperties(H4AMC_MQTT5_Property
 	return values;
 }
 
-std::vector<uint8_t> MQTT_Properties::getBinaryProperty(H4AMC_MQTT5_Property p)
+H4AMC_BinaryData MQTT_Properties::getBinaryProperty(H4AMC_MQTT5_Property p)
 {
 	auto it = std::find_if(binary_props.begin(),binary_props.end(), [p](const MQTT_Property_Binary& bp){ return bp.id == p; });
 	if (it != binary_props.end())
 		return it->value;
-	return std::vector<uint8_t>();
+	return H4AMC_BinaryData();
 }
 
 #endif // MQTT5

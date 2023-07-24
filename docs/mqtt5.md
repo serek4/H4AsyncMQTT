@@ -138,7 +138,7 @@ void setup() {
 Please refer to [MQTT Payload handling](pl.md).
 ```cpp
 void myPublish(const char* topic, const char* payload, uint8_t qos, bool retain, MQTT5PublishProperties& properties){
-	H4AMC_PublishOptions opts(retain,properties);
+	H4AMC_PublishOptions opts(properties, retain);
 	mqttClient.publish(topic, payload, strlen(payload), qos, opts);
 }
 
@@ -205,9 +205,9 @@ USER_PROPERTIES_MAP user_props{
 	{"Client":"H4AsyncMQTT "H4AMC_VERSION},
 	{"Device Serial":"123456"}
 }
-auto ret = mqttClient.addUserProp(PUBLISH, user_props); // returns false if invalid packet supplied.
+auto ret = mqttClient.addStaticUserProp(PUBLISH, user_props); // returns false if invalid packet supplied.
 // Add to multiple packets:
-mqttClient.addUserProp({CONNECT,PUBLISH,SUBSCRIBE}, user_props);
+mqttClient.addStaticUserProp({CONNECT,PUBLISH,SUBSCRIBE}, user_props);
 ```
 #### Dynamic Properties:
 ```cpp
@@ -234,6 +234,7 @@ mqttClient.setAuthenticator(&SCRAM_Authenticator);
 ```cpp
 Server_Options      getServerOptions(); // Gets the server options.
 void                resetUserProps(); // Clears the Static and Dynamic maps.
+void                printUserProperty(USER_PROPERTIES_MAP& props); // Prints a provided User Property
 ```
 
 ### Configurations:

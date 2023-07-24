@@ -77,17 +77,17 @@ namespace H4AMC_Helpers {
         *p+=2+tlen;
         return rv;
     }
-    uint8_t* encodeBinary(uint8_t* p, const std::vector<uint8_t>& data)
+    uint8_t* encodeBinary(uint8_t* p, const H4AMC_BinaryData& data)
     {
         p=poke16(p,data.size());
         std::copy_n(data.begin(), data.size(), p);
         return p+data.size();
     }
-    std::vector<uint8_t> decodeBinary(uint8_t** p)
+    H4AMC_BinaryData decodeBinary(uint8_t** p)
     {
         uint16_t len=peek16(*p);
         *p+=2;
-        std::vector<uint8_t> rv;
+        H4AMC_BinaryData rv;
         rv.reserve(len);
         std::copy_n(*p, len, std::back_inserter(rv));
         *p+=len;
@@ -384,7 +384,9 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled, uint8_
                 }
                 H4AMC_PRINT1("CONNECTED FH=%u MaxPL=%u SESSION %s\n",_HAL_maxHeapBlock(),getMaxPayloadSize(),session ? "DIRTY":"CLEAN");
                 _resendPartialTxns(session); // Resend before _cbConnect to no resend the same publishes/subsribes .. [ ] We might check for _state afterwards.
+#if MQTT5
                 _clearAliases();
+#endif
                 if (_state == H4AMC_RUNNING && _cbMQTTConnect)
 #if MQTT5
                     _cbMQTTConnect({session,traits.properties->getUserProperties()});
@@ -713,14 +715,14 @@ bool H4AsyncMQTT::_insertTopicAlias(mqttTraits& m)
 }
 #endif
 
-bool H4AsyncMQTT::addUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties){
+bool H4AsyncMQTT::addStaticUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties){
     if (header == CONNACK || header == SUBACK || header == UNSUBACK)
         return false;
     _addUserProp(header, std::make_shared<USER_PROPERTIES_MAP>(user_properties));
     return true;
 }
 
-bool H4AsyncMQTT::addUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties){
+bool H4AsyncMQTT::addStaticUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties){
     for (auto header : headers)
         if (header == CONNACK || header == SUBACK || header == UNSUBACK)
             return false;
