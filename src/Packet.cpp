@@ -225,8 +225,7 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
 
         uint32_t used_subId;
         if (use_subId) { // [ ] Verify subID management.
-            std::set<std::string> _topics(topics.begin(), topics.end());
-            auto it = std::find_if(_parent->_subsResources.begin(), _parent->_subsResources.end(), [&_topics](const std::pair<uint32_t, SubscriptionResource>& pair) { return pair.second.topix==_topics; });
+            auto it = std::find_if(_parent->_subsResources.begin(), _parent->_subsResources.end(), [&topics](const std::pair<uint32_t, SubscriptionResource>& pair) { return pair.second.topix==topics; });
             if (unsub) {
                 if (it != _parent->_subsResources.end()) {
                     _parent->_proposeDeletion(_id, it->first);
@@ -239,9 +238,9 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
                     it->second.cb = opts.getCallback();
                 } else {
                     used_subId=++_parent->subId;
-                    _parent->_subsResources[used_subId] = SubscriptionResource{opts.getCallback(), _topics};
+                    _parent->_subsResources[used_subId] = SubscriptionResource{opts.getCallback(), topics};
                 }
-                _propertyLength += H4AMC_Helpers::varBytesLength(used_subId); // One for the Property ID, one for the length of the value.
+                _propertyLength += H4AMC_Helpers::varBytesLength(used_subId) + 1; // One for the Property ID, one for the length of the value.
             }
         }
 #endif // MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
@@ -255,7 +254,7 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
             p = H4AMC_Helpers::encodeVariableByteInteger(p, _propertyLength);
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
             if (use_subId && !unsub)
-                MQTT_Properties::serializeProperty(PROPERTY_SUBSCRIPTION_IDENTIFIER, p, used_subId);
+                p = MQTT_Properties::serializeProperty(PROPERTY_SUBSCRIPTION_IDENTIFIER, p, used_subId);
 #endif // MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
             p = _embedUserProperties(p, opts.getUserProperties());
             return p;

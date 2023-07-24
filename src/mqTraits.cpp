@@ -361,9 +361,9 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                         uint8_t subopts=*payload++;
                         uint8_t qos = subopts&0x3;
 #if MQTT5
-                        bool    nl  = subopts&0x4;
-                        bool    rap = subopts&0x8;
-                        uint    rh  = subopts&0x30;
+                        bool    nl  = (subopts&0x4)>>SUBSCRIPTION_OPTION_NO_LOCAL_SHIFT;
+                        bool    rap = (subopts&0x8)>>SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED_SHIFT;
+                        uint8_t rh  = (subopts&0x30)>>SUBSCRIPTION_OPTION_RETAIN_HANDLING_SHIFT;
                         H4AMC_PRINT3("  Topic: QoS%d %s NL%d RAP%d RH%d\n",qos,topic.data(),nl,rap,rh);
 #else
                         H4AMC_PRINT3("  Topic: QoS%d %s\n",qos,topic.data());

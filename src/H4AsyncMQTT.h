@@ -74,10 +74,10 @@ struct SubscriptionResource {
 class H4AMC_SubscriptionOptions {
     uint8_t qos;
 #if MQTT5
+    H4AMC_cbMessage cb=nullptr;
     bool nl=MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL;
     bool rap=MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED;
     uint8_t rh=MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING;
-    H4AMC_cbMessage cb;
     USER_PROPERTIES_MAP user_properties;
 #endif
 public:

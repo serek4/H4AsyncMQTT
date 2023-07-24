@@ -84,7 +84,7 @@ uint8_t* MQTT_Property_Numeric_VBI::parse (uint8_t* data){
 		length++;
 		if (multiplier > 128*128*128) //** if (offset>3)
 		{
-			H4AMC_PRINT1("Malformed Packet!!, value=%d\n",value);
+			H4AMC_PRINT1("Malformed Packet!!, value=%u\n",value);
 			malformed_packet = true;
 			return data;
 		}
@@ -93,8 +93,8 @@ uint8_t* MQTT_Property_Numeric_VBI::parse (uint8_t* data){
 }
 
 uint8_t* MQTT_Property_Numeric_VBI::serialize(uint8_t* data, uint32_t value){
-	if (value > 268,435,455UL) {
-		H4AMC_PRINT1("Malformed Packet!!, value=%d\n",value);
+	if (value > 268435455UL) {
+		H4AMC_PRINT1("Malformed Packet!!, value=%u\n",value);
 		malformed_packet = true;
 		return data;
 	}

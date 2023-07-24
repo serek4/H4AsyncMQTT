@@ -86,8 +86,8 @@ struct MQTT_Property_Numeric_2B : public MQTT_Property_Numeric {
     MQTT_Property_Numeric_4B(H4AMC_MQTT5_Property i):MQTT_Property_Numeric(i){}
 }; */
 struct MQTT_Property_Numeric_VBI : public MQTT_Property_Numeric { // Variable Byte Integer
-    bool malformed_packet;
-    int length;
+    bool malformed_packet=false;
+    int length=0;
     uint8_t* parse (uint8_t* data) override;
     uint8_t* serialize(uint8_t* data, uint32_t value) override;
     uint8_t* serialize(uint8_t* data) override;
