@@ -193,8 +193,8 @@ using H4AMC_MEM_POOL        =std::unordered_set	<uint8_t*>;
 using H4AMC_cbConnect       =std::function	<void(H4AMC_ConnackParam)>; // in MQTT5
 using PacketID              =uint16_t;
 #if MQTT5
-using USER_PROPERTIES_MAP 	=H4T_NVP_MAP;
-using H4AMC_FN_DYN_PROPS 	=std::function	<USER_PROPERTIES_MAP(PacketHeader)>;
+using H4AMC_USER_PROPERTIES =H4T_NVP_MAP;
+using H4AMC_FN_DYN_PROPS 	=std::function	<H4AMC_USER_PROPERTIES(PacketHeader)>;
 using H4AMC_AuthInformation = std::pair<H4AMC_MQTT_ReasonCode, std::pair<std::string, H4AMC_BinaryData>>;
 #endif
 

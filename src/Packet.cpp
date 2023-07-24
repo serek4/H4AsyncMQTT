@@ -33,9 +33,9 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #include<Packet.h>
 
 #if MQTT5
-USER_PROPERTIES_MAP dummy;
+H4AMC_USER_PROPERTIES dummy;
 
-uint32_t Packet::__fetchSize(USER_PROPERTIES_MAP &props)
+uint32_t Packet::__fetchSize(H4AMC_USER_PROPERTIES &props)
 {
     uint32_t total_size=0;
     for (auto& up : props) { 
@@ -44,7 +44,7 @@ uint32_t Packet::__fetchSize(USER_PROPERTIES_MAP &props)
     return total_size;
 }
 
-uint32_t Packet::__fetchPassedProps(USER_PROPERTIES_MAP &props)
+uint32_t Packet::__fetchPassedProps(H4AMC_USER_PROPERTIES &props)
 {
     return __fetchSize(props);
 }
@@ -69,19 +69,19 @@ uint32_t Packet::__fetchDynamicProps()
     if (isPublish) header=PUBLISH;
     if (_parent->_user_dynamic_props.count(header)) {
         auto &cbDynamic = _parent->_user_dynamic_props[header];
-        _dynProps = std::make_shared<USER_PROPERTIES_MAP>(cbDynamic(header));
+        _dynProps = std::make_shared<H4AMC_USER_PROPERTIES>(cbDynamic(header));
         return __fetchSize(*_dynProps);
     }
     return 0;
 }
 
-uint8_t *Packet::__embedProps(uint8_t* p, USER_PROPERTIES_MAP &props)
+uint8_t *Packet::__embedProps(uint8_t* p, H4AMC_USER_PROPERTIES &props)
 {
     p=MQTT_Properties::serializeUserProperties(p,props);
     return p;
 }
 
-uint8_t *Packet::__embedPassedProps(uint8_t *p, USER_PROPERTIES_MAP &props)
+uint8_t *Packet::__embedPassedProps(uint8_t *p, H4AMC_USER_PROPERTIES &props)
 {
     if (props.size()) {
         p=__embedProps(p, props);
@@ -224,7 +224,7 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
         use_subId = svrOpts->subscriptions_identifiers_available && _controlcode == SUBSCRIBE && (opts.getCallback() != nullptr || unsub); // [ ] UNSUBSCRIBE Management
 
         uint32_t used_subId;
-        if (use_subId) { // [ ] Verify subID management.
+        if (use_subId) { // [x] Verify subID management.
             auto it = std::find_if(_parent->_subsResources.begin(), _parent->_subsResources.end(), [&topics](const std::pair<uint32_t, SubscriptionResource>& pair) { return pair.second.topix==topics; });
             if (unsub) {
                 if (it != _parent->_subsResources.end()) {

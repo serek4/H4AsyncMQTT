@@ -715,18 +715,18 @@ bool H4AsyncMQTT::_insertTopicAlias(mqttTraits& m)
 }
 #endif
 
-bool H4AsyncMQTT::addStaticUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties){
+bool H4AsyncMQTT::addStaticUserProp(PacketHeader header, H4AMC_USER_PROPERTIES user_properties){
     if (header == CONNACK || header == SUBACK || header == UNSUBACK)
         return false;
-    _addUserProp(header, std::make_shared<USER_PROPERTIES_MAP>(user_properties));
+    _addUserProp(header, std::make_shared<H4AMC_USER_PROPERTIES>(user_properties));
     return true;
 }
 
-bool H4AsyncMQTT::addStaticUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties){
+bool H4AsyncMQTT::addStaticUserProp(std::initializer_list<PacketHeader> headers, H4AMC_USER_PROPERTIES user_properties){
     for (auto header : headers)
         if (header == CONNACK || header == SUBACK || header == UNSUBACK)
             return false;
-    auto shared = std::make_shared<USER_PROPERTIES_MAP>(user_properties);
+    auto shared = std::make_shared<H4AMC_USER_PROPERTIES>(user_properties);
     for(auto header : headers)
         _addUserProp(header, shared);
     return true;

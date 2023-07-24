@@ -54,7 +54,7 @@ In the [configuration file](../src/h4amc_config.h), uncomment the line:
 ### Setting callbacks, will, and connect:
 ```cpp
 H4AsyncMQTT mqttClient;
-void printUserProperties(USER_PROPERTIES_MAP& up) {
+void printUserProperties(H4AMC_USER_PROPERTIES& up) {
 	for (auto p : up) {
 		Serial.printf("%s:%s\n", p.first.c_str(), p.second.c_str());
 	}
@@ -150,7 +150,7 @@ void myPublish(const char* topic, const char* payload, uint8_t qos, bool retain,
  	// props.content_type;
  	// props.response_topic;
  	// props.correlation_data;
-	USER_PROPERTIES_MAP user_props;
+	H4AMC_USER_PROPERTIES user_props;
 	user_props["key"]="value";
 
 	props.user_properties=user_props;
@@ -165,7 +165,7 @@ void myPublish(const char* topic, const char* payload, uint8_t qos, bool retain,
 uint8_t qos=2;
 mqttClient.subscribe("topic/example/qos",qos); // MQTT v3.1.1 compatible API
 
-USER_PROPERTIES_MAP subscribeProps{{"From","H4AsyncMQTT"}};
+H4AMC_USER_PROPERTIES subscribeProps{{"From","H4AsyncMQTT"}};
 bool noLocal=1;
 bool retainAsPublished=1;
 uint8_t retainHandling=1;
@@ -201,7 +201,7 @@ mqttClient.subscribe("$share/ShareName/filter", H4AMC_SubscriptionOptions{2,cust
 ### Static and Dynamic Properties:
 #### Static Properties:
 ```cpp
-USER_PROPERTIES_MAP user_props{
+H4AMC_USER_PROPERTIES user_props{
 	{"Client":"H4AsyncMQTT "H4AMC_VERSION},
 	{"Device Serial":"123456"}
 }
@@ -211,9 +211,9 @@ mqttClient.addStaticUserProp({CONNECT,PUBLISH,SUBSCRIBE}, user_props);
 ```
 #### Dynamic Properties:
 ```cpp
-USER_PROPERTIES_MAP dynamicPropCB(PacketHeader header) {
+H4AMC_USER_PROPERTIES dynamicPropCB(PacketHeader header) {
 	// switch(header) {...} // suitable if different headers gets different properties.
-	USER_PROPERTIES_MAP user_props;
+	H4AMC_USER_PROPERTIES user_props;
 	if (header == PUBLISH) {
 		user_props["time"]=millis(); // OR better: EPOCH time.
 	}
@@ -234,7 +234,7 @@ mqttClient.setAuthenticator(&SCRAM_Authenticator);
 ```cpp
 Server_Options      getServerOptions(); // Gets the server options.
 void                resetUserProps(); // Clears the Static and Dynamic maps.
-void                printUserProperty(USER_PROPERTIES_MAP& props); // Prints a provided User Property
+void                printUserProperty(H4AMC_USER_PROPERTIES& props); // Prints a provided User Property
 ```
 
 ### Configurations:

@@ -78,7 +78,7 @@ class H4AMC_SubscriptionOptions {
     bool nl=MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL;
     bool rap=MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED;
     uint8_t rh=MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING;
-    USER_PROPERTIES_MAP user_properties;
+    H4AMC_USER_PROPERTIES user_properties;
 #endif
 public:
     // H4AMC_SubscriptionOptions() {}
@@ -89,7 +89,7 @@ public:
                               bool no_local = MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL,
                               bool retain_as_published = MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED,
                               uint8_t retain_handling = MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING,
-                              USER_PROPERTIES_MAP user_properties =USER_PROPERTIES_MAP{}) 
+                              H4AMC_USER_PROPERTIES user_properties =H4AMC_USER_PROPERTIES{}) 
                               : qos(QoS), cb(callback), nl(no_local), rap(retain_as_published), rh(retain_handling), user_properties(user_properties)
     {
     }
@@ -97,7 +97,7 @@ public:
             bool                getRetainAsPublished(){ return rap; }
             uint8_t             getRetainHandling(){ return rh; }
             H4AMC_cbMessage     getCallback() { return cb; }
-            USER_PROPERTIES_MAP& getUserProperties() { return user_properties; }
+            H4AMC_USER_PROPERTIES& getUserProperties() { return user_properties; }
 #endif
             uint8_t             getQos(){ return qos; }
 
@@ -143,8 +143,8 @@ struct H4AMC_MessageOptions : public H4AMC_PublishOptions {
 struct H4AMC_ConnackParam {
     bool session;
 #if MQTT5
-    USER_PROPERTIES_MAP connack_props;
-    H4AMC_ConnackParam(bool session, USER_PROPERTIES_MAP up) : session(session), connack_props(up){}
+    H4AMC_USER_PROPERTIES connack_props;
+    H4AMC_ConnackParam(bool session, H4AMC_USER_PROPERTIES up) : session(session), connack_props(up){}
 #endif
     H4AMC_ConnackParam(bool session) : session(session){}
 };
@@ -257,7 +257,7 @@ class H4AsyncMQTT {
 #if MQTT5
                 // bool                _cleanStart=true; // _forceCleanStart=true;
                 Server_Options*     _serverOptions=nullptr;
-                std::map<PacketHeader, std::shared_ptr<USER_PROPERTIES_MAP>> _user_static_props;                
+                std::map<PacketHeader, std::shared_ptr<H4AMC_USER_PROPERTIES>> _user_static_props;                
                 std::map<PacketHeader, H4AMC_FN_DYN_PROPS> _user_dynamic_props;
                 MQTT5WillProperties _willProperties;
                 H4AMC_FN_STRING     _cbRedirect;
@@ -332,7 +332,7 @@ class H4AsyncMQTT {
                                             _cbReason(props.getStringProperty(PROPERTY_REASON_STRING));
                                     }
 
-                void                _addUserProp(PacketHeader header, std::shared_ptr<USER_PROPERTIES_MAP> nv)  { _user_static_props[header]=nv; }
+                void                _addUserProp(PacketHeader header, std::shared_ptr<H4AMC_USER_PROPERTIES> nv)  { _user_static_props[header]=nv; }
                 void                _addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f)              { _user_dynamic_props[header]=f; }
 
                 bool                _isTXAliasAvailable(const std::string &topic) { auto& ta=_tx_topic_alias; return std::find(ta.begin(), ta.end(), topic) != ta.end(); } // For any fresh start, _tx_topic_alias is empty
@@ -395,15 +395,15 @@ class H4AsyncMQTT {
                 void                onDisconnect(H4AMC_FN_VOID callback){ _cbMQTTDisconnect=callback; }
                 void                onConnect(H4AMC_cbConnect callback){ _cbMQTTConnect=callback; }
 #if MQTT5
-        static  void                printUserProperty(USER_PROPERTIES_MAP& props) { for (auto p:props) Serial.printf("%s:%s\n", p.first.c_str(), p.second.c_str());}
+        static  void                printUserProperty(H4AMC_USER_PROPERTIES& props) { for (auto p:props) Serial.printf("%s:%s\n", p.first.c_str(), p.second.c_str());}
                 void                onRedirect(H4AMC_FN_STRING f) { _cbRedirect=f; }
                 void                onReason(H4AMC_FN_STRING f) { _cbReason=f; }
                 void                setAuthenticator(H4Authenticator* authenticator) { _authenticator = authenticator; }
                 Server_Options      getServerOptions() { return _serverOptions ? *_serverOptions : Server_Options(); }
                 // Valid for CONNECT, PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, UNSUBSCRIBE, DISCONNECT, AUTH
 
-                bool                addStaticUserProp(PacketHeader header, USER_PROPERTIES_MAP user_properties);
-                bool                addStaticUserProp(std::initializer_list<PacketHeader> headers, USER_PROPERTIES_MAP user_properties);
+                bool                addStaticUserProp(PacketHeader header, H4AMC_USER_PROPERTIES user_properties);
+                bool                addStaticUserProp(std::initializer_list<PacketHeader> headers, H4AMC_USER_PROPERTIES user_properties);
                 bool                addDynamicUserProp(PacketHeader header, H4AMC_FN_DYN_PROPS f);
                 bool                addDynamicUserProp(std::initializer_list<PacketHeader> headers, H4AMC_FN_DYN_PROPS f);
                 void                resetUserProps() { _user_static_props.clear(); _user_dynamic_props.clear(); }

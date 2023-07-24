@@ -183,7 +183,7 @@ class MQTT_Properties {
 		H4AMC_NUMERIC_PROPS 				numeric_props;
 		H4AMC_STRING_PROPS 					string_props;
 		H4AMC_BINARY_PROPS 					binary_props;
-		USER_PROPERTIES_MAP 				user_properties;
+		H4AMC_USER_PROPERTIES 				user_properties;
 		
 public:
 		std::vector<H4AMC_MQTT5_Property> 	available_properties;
@@ -195,7 +195,7 @@ public:
 
 				MQTT_PROP_PARSERET 			parseProperties(uint8_t* data);
 
-				USER_PROPERTIES_MAP 		getUserProperties()
+				H4AMC_USER_PROPERTIES 		getUserProperties()
 											{
 												return user_properties;
 											}
@@ -212,7 +212,7 @@ public:
 		static 	uint8_t* 					serializeProperty(H4AMC_MQTT5_Property p, uint8_t* data, H4AMC_BinaryData value);
 
 		static 	uint8_t* 					serializeUserProperty(uint8_t *data, MQTT_PROP_STRPAIR& value);
-		static 	uint8_t* 					serializeUserProperties(uint8_t *data, USER_PROPERTIES_MAP& map);
+		static 	uint8_t* 					serializeUserProperties(uint8_t *data, H4AMC_USER_PROPERTIES& map);
 
 
 	// MQTT_Properties(uint8_t* start) { parseProperties(start); }
@@ -239,7 +239,7 @@ struct MQTT5MessageProperties {
     	std::string 			content_type;
     	std::string 			response_topic;
     	H4AMC_BinaryData 	    correlation_data;
-    	USER_PROPERTIES_MAP     user_properties;
+    	H4AMC_USER_PROPERTIES   user_properties;
         // void setPayloadIndicator(uint8_t payload_indicator) { payload_format_indicator = payload_indicator; }
         // void setMessageExpiry(uint32_t message_expiry) { message_expiry_interval = message_expiry; }
         // void setContentType(const std::string& content_type) { this->content_type=content_type; }
@@ -259,7 +259,7 @@ struct MQTT5PublishProperties : public MQTT5MessageProperties {
     MQTT5PublishProperties(MQTT_Properties& props) : MQTT5MessageProperties(props) {}
     MQTT5PublishProperties(uint8_t indicator = 0, uint32_t expiry = 0, const std::string &contype = {},
                            const std::string &resptopic = {}, H4AMC_BinaryData correlation = {},
-                           USER_PROPERTIES_MAP props = {})
+                           H4AMC_USER_PROPERTIES props = {})
     {
             payload_format_indicator = indicator;
             message_expiry_interval = expiry;

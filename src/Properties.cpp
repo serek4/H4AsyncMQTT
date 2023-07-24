@@ -278,7 +278,7 @@ uint8_t* MQTT_Properties::serializeUserProperty(uint8_t *data, MQTT_PROP_STRPAIR
 	return prop.serialize(data, value);
 }
 
-uint8_t *MQTT_Properties::serializeUserProperties(uint8_t *data, USER_PROPERTIES_MAP &map)
+uint8_t *MQTT_Properties::serializeUserProperties(uint8_t *data, H4AMC_USER_PROPERTIES &map)
 {
 	for (auto& item : map) {
 		MQTT_PROP_STRPAIR pair{item.first,item.second};

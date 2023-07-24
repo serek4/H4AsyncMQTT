@@ -41,17 +41,17 @@ class Packet {
                 H4AMC_FN_U8PTRU8 _properties=[](uint8_t* p){ return p; };
                 uint32_t         _propertyLength=0;
 
-                std::shared_ptr<USER_PROPERTIES_MAP> _dynProps;
+                std::shared_ptr<H4AMC_USER_PROPERTIES> _dynProps;
 
-                uint32_t         __fetchSize(USER_PROPERTIES_MAP& props);
-                uint32_t         __fetchPassedProps(USER_PROPERTIES_MAP& props);
+                uint32_t         __fetchSize(H4AMC_USER_PROPERTIES& props);
+                uint32_t         __fetchPassedProps(H4AMC_USER_PROPERTIES& props);
                 uint32_t         __fetchStaticProps();
                 uint32_t         __fetchDynamicProps();
-                uint8_t*         __embedProps(uint8_t* p, USER_PROPERTIES_MAP& props);
-                uint8_t*         __embedPassedProps(uint8_t* p, USER_PROPERTIES_MAP& props);
+                uint8_t*         __embedProps(uint8_t* p, H4AMC_USER_PROPERTIES& props);
+                uint8_t*         __embedPassedProps(uint8_t* p, H4AMC_USER_PROPERTIES& props);
                 uint8_t*         __embedStaticProps(uint8_t* p);
                 uint8_t*         __embedDynamicProps(uint8_t* p);
-                uint32_t         _fetchUserProperties(USER_PROPERTIES_MAP& publish_userProps) {
+                uint32_t         _fetchUserProperties(H4AMC_USER_PROPERTIES& publish_userProps) {
                     uint32_t total=0;
                     total+=__fetchPassedProps(publish_userProps);
                     total+=__fetchStaticProps();
@@ -59,7 +59,7 @@ class Packet {
                     return total;
                 }
 
-                uint8_t*          _embedUserProperties(uint8_t* p, USER_PROPERTIES_MAP& props) {
+                uint8_t*          _embedUserProperties(uint8_t* p, H4AMC_USER_PROPERTIES& props) {
                     p=__embedPassedProps(p, props);
                     p=__embedStaticProps(p);
                     return __embedDynamicProps(p);
