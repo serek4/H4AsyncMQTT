@@ -1,4 +1,5 @@
 ![plainhdr](../assets/pangoplain.jpg)
+
 # MQTT Payload handling
 
 ***N.B. You MUST read this before using any of the 'x' (expert) functions.***
@@ -145,7 +146,7 @@ This is probably *THE* most common payload handling error / potential bug. In ma
 
 ---
 
-# The 'x functions' 
+# The 'x functions'
 
 ## xPublish / xPayload
 
@@ -158,8 +159,8 @@ While some simple validation / rejection can be done by the  `xPayload` calls, *
 In summary: 
 
 1. ***DO NOT MIX AND MATCH 'x' CALLS WITH STANDARD publish***
-2.  ***ALWAYS USE MATCHING 'xPublish' and 'xPayload' CALLS***
-3.  ***If you don't "get" all of this, stick to simple publish and do your own length calculations and unpacking*** (and good luck with it :) )
+2. ***ALWAYS USE MATCHING 'xPublish' and 'xPayload' CALLS***
+3. ***If you don't "get" all of this, stick to simple publish and do your own length calculations and unpacking*** (and good luck with it :) )
 
 ---
 
@@ -243,6 +244,5 @@ mqttClient.xPayload(&payload[0],payload_length,ss); // unpacks <payload_length> 
 * [H4/Plugins support](https://www.facebook.com/groups/h4plugins)
 
 I am always grateful for any $upport on [Patreon](https://www.patreon.com/esparto) :)
-
 
 (C) 2020 Phil Bowles

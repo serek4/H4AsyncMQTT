@@ -8,28 +8,35 @@
 
 ## 1. Quality of service guarantees
 
+### **Note:**
+
+* These comments are the original author's words, the current approach is different to the concluded one, and it complies with both MQTT v5.0 and MQTT v3.1.1, wherein MQTT v5.0 provides one method of delivering QoS2 messages. The library handles the duplicated message (if any) by its internals.
+* The client now asks a clean start/session if no records were available (for outbound or inbound under ACK packets), and the server MUST respect this. So no worry at all if any failure.
+* The issues of TCP disconnections and crashes were present and common at the time when the author wrote this, so these failures were entrinched in his head concerning MQTT compliance. Now with his nice work at [H4AsyncTCP](https://github.com/hamzahajeir/H4AsyncTCP) which the maintainer seeked for reliability, it's no longer an issue.
+* The maintainer just leaves these comments for the readers (for any useful information).
+
 Almost *no* embedded system can *fully* support MQTT "Quality of service" (QoS) levels 1 & 2, for two reasons:
 
 ### 1.1 The [MQTT 3.1.1 spec](http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html) itself states
 
-*"4.1 Storing state 
+> *"4.1 Storing state 
 It is necessary for the Client and Server to store Session state in order to provide Quality of Service guarantees. The Client and Server MUST store Session state for the entire duration of the Session [MQTT-4.1.0-1]. A Session MUST last at least as long it has an active Network Connection [MQTT-4.1.0- 2].*
-
-*Non normative comment*
-
-*The storage capabilities of Client and Server implementations will of course have limits in terms  of capacity and may be subject to administrative policies such as the maximum time that Session  state is stored between Network Connections. Stored Session state can be discarded as a result  of an administrator action, including an automated response to defined conditions. This has the  effect of terminating the Session. These actions might be prompted by resource constraints or for  other operational reasons. It is prudent to evaluate the storage capabilities of the Client and  Server to ensure that they are sufficient.*
-
-*Non normative comment*
-
-*It is possible that hardware or software failures may result in loss or corruption of Session state  stored by the Client or Server.*
-
-*Non normative comment*
-
-*Normal operation of the Client of Server could mean that stored state is lost or corrupted because  of administrator action, hardware failure or software failure. An administrator action could be an  automated response to defined conditions. These actions might be prompted by resource  constraints or for other operational reasons. For example the server might determine that based  on external knowledge, a message or messages can no longer be delivered to any current or  future client.*
-
-*Non normative comment*
-
-*An MQTT user should evaluate the storage capabilities of the MQTT Client and Server  implementations to ensure that they are sufficient for their needs."*
+>
+> *Non normative comment*
+>
+>*The storage capabilities of Client and Server implementations will of course have limits in terms  of capacity and may be subject to administrative policies such as the maximum time that Session  state is stored between Network Connections. Stored Session state can be discarded as a result  of an administrator action, including an automated response to defined conditions. This has the  effect of terminating the Session. These actions might be prompted by resource constraints or for  other operational reasons. It is prudent to evaluate the storage capabilities of the Client and  Server to ensure that they are sufficient.*
+>
+>*Non normative comment*
+>
+>*It is possible that hardware or software failures may result in loss or corruption of Session state  stored by the Client or Server.*
+>
+>*Non normative comment*
+>
+>*Normal operation of the Client of Server could mean that stored state is lost or corrupted because  of administrator action, hardware failure or software failure. An administrator action could be an  automated response to defined conditions. These actions might be prompted by resource  constraints or for other operational reasons. For example the server might determine that based  on external knowledge, a message or messages can no longer be delivered to any current or  future client.*
+>
+>*Non normative comment*
+>
+>*An MQTT user should evaluate the storage capabilities of the MQTT Client and Server  implementations to ensure that they are sufficient for their needs."*
 
 ### 1.2 Absent/limited storage space on embedded systems
 
@@ -47,9 +54,9 @@ It cannot recognise and ACK any incoming retransmit requests from the server, si
 
 MQTT says: *"4.4 Message delivery retry*
 
-*When a Client reconnects with CleanSession set to 0, both the Client and Server MUST re-send any  unacknowledged PUBLISH Packets (where QoS > 0) and PUBREL Packets using their original Packet Identifiers [MQTT-4.4.0-1]. This is the only circumstance where a Client or Server is REQUIRED to redeliver messages."*
+>*When a Client reconnects with CleanSession set to 0, both the Client and Server MUST re-send any  unacknowledged PUBLISH Packets (where QoS > 0) and PUBREL Packets using their original Packet Identifiers [MQTT-4.4.0-1]. This is the only circumstance where a Client or Server is REQUIRED to redeliver messages."*
 
-Being physically unable to comply due to both 1.2.1 and 1.2.2 above, the embedded client has few healthy choices: 
+Being physically unable to comply due to both 1.2.1 and 1.2.2 above, the embedded client has few healthy choices:
 
 ##### 1.2.3.1 Just lie!
 
@@ -135,6 +142,5 @@ This is the method currently used by `H4AsyncMQTT`. Additionally, it provides an
 * [H4/Plugins support](https://www.facebook.com/groups/h4plugins)
 
 I am always grateful for any $upport on [Patreon](https://www.patreon.com/esparto) :)
-
 
 (C) 2020 Phil Bowles

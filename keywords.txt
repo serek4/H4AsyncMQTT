@@ -18,7 +18,6 @@ connect	KEYWORD2
 disconnect	KEYWORD2
 getClientId	KEYWORD2
 getMaxPayloadSize	KEYWORD2
-mqttConnected	KEYWORD2
 onMqttConnect	KEYWORD2
 onMqttDisconnect	KEYWORD2
 onMqttError	KEYWORD2

@@ -131,12 +131,12 @@ H4AsyncMQTT::H4AsyncMQTT(){
 
 }
 
-void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,PacketID id,bool inout){ /// refakta?
+void H4AsyncMQTT::_ACK(H4AMC_PACKET_MAP* m,PacketID id){ /// refakta?
     if(m->count(id)){
         uint8_t* data=((*m)[id]).data;
         mbx::clear(data);
         m->erase(id);
-    } else _notify(inout ? H4AMC_INBOUND_QOS_ACK_FAIL:H4AMC_OUTBOUND_QOS_ACK_FAIL,id); //H4AMC_PRINT("WHO TF IS %d???\n",id);
+    } else _notify(H4AMC_OUTBOUND_QOS_ACK_FAIL,id); //H4AMC_PRINT("WHO TF IS %d???\n",id);
     mbx::dump();
 }
 
@@ -261,7 +261,6 @@ void H4AsyncMQTT::_connect(){
     }
 #endif 
     _h4atClient->connect(_url);
-    // _startReconnector();
 }
 
 void H4AsyncMQTT::_destroyClient() {
@@ -298,8 +297,9 @@ void H4AsyncMQTT::_hpDespatch(mqttTraits P){
             }
             else if(pl=="dump"){ dump(); }
         }
-        else{
+        else
 #endif
+        {
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
         bool delivered=false;
         auto& subIds=P.subscription_ids;
@@ -652,7 +652,7 @@ void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
 bool H4AsyncMQTT::_availableTXAliasSpace() {
     if (_serverOptions)
         return _serverOptions->topic_alias_max > _tx_topic_alias.size();
-    _notify(0,H4AMC_NO_SERVEROPTIONS);
+    _notify(H4AMC_NO_SERVEROPTIONS);
     return false;
 }
 uint16_t H4AsyncMQTT::_getTXAlias(const std::string& topic) { // [ ] Test operations.
@@ -996,6 +996,7 @@ bool H4AsyncMQTT::secureTLS(const u8_t *ca, size_t ca_len, const u8_t *privkey, 
     return true;
 #else
     H4AMC_PRINT1("TLS is not activated within H4AsyncTCP\n");
+    _notify(H4AMC_TLS_UNSUPPORTED);
 	return false;
 #endif
 }

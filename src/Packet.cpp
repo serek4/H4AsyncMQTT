@@ -220,6 +220,7 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
         bool use_subId = false;
 #endif
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+        // [ ] If not found a matching topics, fetch the available matching topics from a the set of topics pulling them out. (Is it necessary/have a use case?)
         bool unsub = _controlcode == UNSUBSCRIBE;
         use_subId = svrOpts->subscriptions_identifiers_available && _controlcode == SUBSCRIBE && (opts.getCallback() != nullptr || unsub); // [ ] UNSUBSCRIBE Management
 

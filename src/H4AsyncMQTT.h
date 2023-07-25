@@ -69,8 +69,8 @@ struct SubscriptionResource {
     // SubscriptionResource():cb(nullptr) {}
     // SubscriptionResource(H4AMC_cbMessage cb, std::set<std::string> topics) : cb(cb), topix(topics) {}
 };
-#endif
-#endif
+#endif // MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+#endif // MQTT5
 class H4AMC_SubscriptionOptions {
     uint8_t qos;
 #if MQTT5
@@ -81,10 +81,8 @@ class H4AMC_SubscriptionOptions {
     H4AMC_USER_PROPERTIES user_properties;
 #endif
 public:
-    // H4AMC_SubscriptionOptions() {}
-    H4AMC_SubscriptionOptions(int qos=0) : qos(qos) {}
 #if MQTT5
-    H4AMC_SubscriptionOptions(uint8_t QoS,
+    H4AMC_SubscriptionOptions(uint8_t QoS=0,
                               H4AMC_cbMessage callback=nullptr,
                               bool no_local = MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL,
                               bool retain_as_published = MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED,
@@ -93,13 +91,23 @@ public:
                               : qos(QoS), cb(callback), nl(no_local), rap(retain_as_published), rh(retain_handling), user_properties(user_properties)
     {
     }
+#else
+    H4AMC_SubscriptionOptions(uint8_t QoS=0) : qos(QoS) {}
+#endif
+#if MQTT5
             bool                getNoLocal(){ return nl; }
             bool                getRetainAsPublished(){ return rap; }
             uint8_t             getRetainHandling(){ return rh; }
             H4AMC_cbMessage     getCallback() { return cb; }
             H4AMC_USER_PROPERTIES& getUserProperties() { return user_properties; }
+            void                setNoLocal(bool value) { nl=value; }
+            void                setRetainAsPublished(bool value) { rap=value; }
+            void                setRetainHandling(uint8_t value) { rh=value; }
+            void                setCallback(H4AMC_cbMessage callback) {cb=callback; }
+            void                setUserProperties(H4AMC_USER_PROPERTIES& properties) { user_properties=properties; }
 #endif
             uint8_t             getQos(){ return qos; }
+            void                setQos(uint8_t value) { qos=value;}
 
 };
 
@@ -108,10 +116,13 @@ struct H4AMC_PublishOptions {
     friend class H4AsyncMQTT;
     bool retain;
 
+#if MQTT5
+    H4AMC_PublishOptions(bool retain = false, MQTT5PublishProperties props={}) : props(props), retain(retain) {}
+#else
     H4AMC_PublishOptions(bool retain = false) : retain(retain) {}
+#endif
     bool getRetained() { return retain; }
 #if MQTT5
-    H4AMC_PublishOptions(MQTT5PublishProperties props, bool retain = false) : props(props), retain(retain) {}
     MQTT5PublishProperties& getProperties() { return props; }
 private:
     MQTT5PublishProperties props;
@@ -137,7 +148,7 @@ struct H4AMC_MessageOptions : public H4AMC_PublishOptions {
     bool dup;
     H4AMC_MessageOptions(uint8_t qos, bool retain, bool dup) : H4AMC_PublishOptions(retain), qos(qos), dup(dup) {}
 #if MQTT5
-    H4AMC_MessageOptions(uint8_t qos, bool retain, bool dup, MQTT5PublishProperties props) : H4AMC_PublishOptions(props, retain), qos(qos), dup(dup) {}
+    H4AMC_MessageOptions(uint8_t qos, bool retain, bool dup, MQTT5PublishProperties props) : H4AMC_PublishOptions(retain, props), qos(qos), dup(dup) {}
 #endif
 };
 struct H4AMC_ConnackParam {
@@ -221,6 +232,15 @@ class mqttTraits {
         inline  uint8_t*        start() { return data+1+offset; }
 };
 
+struct WillMessage {
+    std::string         payload;
+    uint8_t             qos=0;
+    bool                retain=false;
+    std::string         topic;
+#if MQTT5
+    MQTT5WillProperties props;
+#endif
+} ;
 
 class Packet;
 class ConnectPacket;
@@ -232,16 +252,6 @@ enum {
     H4AMC_TCP_CONNECTED,
     H4AMC_RUNNING
 };
-
-struct WillMessage {
-    std::string         payload;
-    uint8_t             qos=0;
-    bool                retain=false;
-    std::string         topic;
-#if MQTT5
-    MQTT5WillProperties props;
-#endif
-} ;
 
 enum NetworkState : uint8_t {
     H4AMC_NETWORK_DISCONNECTED,
@@ -303,8 +313,8 @@ class H4AsyncMQTT {
                 H4AMC_BinaryData    _clientCert;
 #endif
                
-                void                _ACK(H4AMC_PACKET_MAP* m,PacketID id,bool inout); // inout true=INBOUND false=OUTBOUND
-                void                _ACKoutbound(PacketID id){ _ACK(&_outbound,id,false); }
+                void                _ACK(H4AMC_PACKET_MAP* m,PacketID id); // inout true=INBOUND false=OUTBOUND
+                void                _ACKoutbound(PacketID id){ _ACK(&_outbound,id); }
 
                 bool                _send(const uint8_t *data, uint32_t len, bool copy)
                                     {

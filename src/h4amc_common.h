@@ -48,10 +48,6 @@
 
 enum H4AMC_FAILURE {
     H4AMC_CONNECT_FAIL= H4AMC_ERROR_BASE,
-    H4AMC_BAD_FINGERPRINT,
-    H4AMC_NO_FINGERPRINT,
-    H4AMC_NO_SSL,
-    H4AMC_UNWANTED_FINGERPRINT,
     H4AMC_SUBSCRIBE_FAIL,
 	H4AMC_UNSUBSCRIBE_FAIL,
     H4AMC_INBOUND_QOS_ACK_FAIL,
@@ -61,6 +57,7 @@ enum H4AMC_FAILURE {
     H4AMC_BOGUS_PACKET,
     H4AMC_X_INVALID_LENGTH,
     H4AMC_USER_LOGIC_ERROR,
+    H4AMC_NO_SSL,
 #if MQTT5
     H4AMC_SERVER_DISCONNECT,
 	H4AMC_NO_SERVEROPTIONS,
@@ -178,6 +175,7 @@ namespace H4AMC_Helpers {
     uint8_t* encodeVariableByteInteger(uint8_t* p, uint32_t value);
     uint8_t varBytesLength(uint32_t value);
 }
+using PacketID              =uint16_t;
 class mqttTraits;
 struct H4AMC_MessageOptions;
 struct H4AMC_ConnackParam;
@@ -185,13 +183,12 @@ using H4AMC_FN_VOID        	=std::function	<void(void)>;
 using H4AMC_FN_U8PTR       	=std::function	<void(uint8_t*,uint8_t* base)>;
 using H4AMC_FN_U8PTRU8     	=std::function	<uint8_t*(uint8_t*)>;
 using H4AMC_FN_STRING       =std::function	<void(const std::string&)>;
-using H4AMC_PACKET_MAP      =std::map		<uint16_t,mqttTraits>; // indexed by messageId
 using H4AMC_cbError         =std::function	<void(int, int)>;
 using H4AMC_cbMessage       =std::function	<void(const char* topic, const uint8_t* payload, size_t len, H4AMC_MessageOptions opts)>;
-using H4AMC_cbPublish 		=std::function	<void(uint16_t)>;
-using H4AMC_MEM_POOL        =std::unordered_set	<uint8_t*>;
 using H4AMC_cbConnect       =std::function	<void(H4AMC_ConnackParam)>; // in MQTT5
-using PacketID              =uint16_t;
+using H4AMC_cbPublish 		=std::function	<void(PacketID)>;
+using H4AMC_PACKET_MAP      =std::map		<uint16_t,mqttTraits>; // indexed by messageId
+using H4AMC_MEM_POOL        =std::unordered_set	<uint8_t*>;
 #if MQTT5
 using H4AMC_USER_PROPERTIES =H4T_NVP_MAP;
 using H4AMC_FN_DYN_PROPS 	=std::function	<H4AMC_USER_PROPERTIES(PacketHeader)>;

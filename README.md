@@ -1,6 +1,6 @@
 ![mbm](assets/pangoplain.jpg)
 
-# Asynchronous ArduinoIDE MQTT 3.1.1 client library for ESP8266, ESP32
+# Asynchronous ArduinoIDE MQTT 3.1.1 and 5.0 client library for ESP8266, ESP32
 ---
 
 Licence: ![licence](https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png) Creative Commons: Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) [Legal Text](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode)
@@ -24,9 +24,10 @@ Licence: ![licence](https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png) Crea
 
 
 # Other Documents
-* [Getting Started](101.md)
-* [Payload Handling and "expert" functions](pl.md)
+* [Getting Started](docs/101.md)
+* [Payload Handling and "expert" functions](docs/pl.md)
 * [Full API specification](docs/api.md)
+* [MQTT Version 5.0](docs/mqtt5.md)
 * [Using TLS](docs/tls.md)
 * [Challenges of embedded MQTT](docs/qos.md)
   
