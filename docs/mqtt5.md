@@ -282,7 +282,7 @@ mqttClient.setAuthenticator(&SCRAM_Authenticator);
 
 ```
 
-**Note:** Unimplemented feature, if really needed please do inform us.
+**Note:** Unimplemented authenticators, if really needed please do inform us.
 
 ### Other APIs
 

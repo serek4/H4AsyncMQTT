@@ -42,22 +42,40 @@ H4AMC_PACKET_MAP        H4AsyncMQTT::_outbound;
 H4_INT_MAP H4AsyncMQTT::_errorNames={
 #if H4AMC_DEBUG
     {H4AMC_CONNECT_FAIL,"CONNECT FAIL"},
-    {H4AMC_BAD_FINGERPRINT,"H4AMC_BAD_FINGERPRINT"},
-    {H4AMC_NO_FINGERPRINT,""},
-    {H4AMC_NO_SSL,"H4AMC_NO_SSL"},
-    {H4AMC_UNWANTED_FINGERPRINT,"H4AMC_UNWANTED_FINGERPRINT"},
-    {H4AMC_SUBSCRIBE_FAIL,"H4AMC_SUBSCRIBE_FAIL"},
+    {H4AMC_SUBSCRIBE_FAIL,"SUBSCRIBE_FAIL"},
+    {H4AMC_UNSUBSCRIBE_FAIL,"UNSUBSCRIBE_FAIL"},
     {H4AMC_INBOUND_QOS_ACK_FAIL,"H4AMC_INBOUND_QOS_ACK_FAIL"},
     {H4AMC_OUTBOUND_QOS_ACK_FAIL,"H4AMC_OUTBOUND_QOS_ACK_FAIL"},
     {H4AMC_INBOUND_PUB_TOO_BIG,"H4AMC_INBOUND_PUB_TOO_BIG"},
     {H4AMC_OUTBOUND_PUB_TOO_BIG,"H4AMC_OUTBOUND_PUB_TOO_BIG"},
     {H4AMC_BOGUS_PACKET,"H4AMC_BOGUS_PACKET"},
     {H4AMC_X_INVALID_LENGTH,"H4AMC_X_INVALID_LENGTH"},
-//    {H4AMC_KEEPALIVE_TOO_LONG,"KEEPALIVE TOO LONG: MUST BE < H4AS_SCAVENGE_FREQ"},
     {H4AMC_USER_LOGIC_ERROR,"USER LOGIC ERROR"},
+    {H4AMC_NO_SSL,"H4AMC_NO_SSL"},
+//    {H4AMC_KEEPALIVE_TOO_LONG,"KEEPALIVE TOO LONG: MUST BE < H4AS_SCAVENGE_FREQ"},
+#if MQTT5
+    {H4AMC_SERVER_DISCONNECT,"Server Disconnect"},
+	{H4AMC_NO_SERVEROPTIONS,"No Server Options - Missing CONNACK?"},
+    {H4AMC_PUBACK_FAIL,"PUBACK FAIL"},
+    {H4AMC_PUBREC_FAIL,"PUBREC FAIL"},
+    {H4AMC_PUBREL_FAIL,"PUBREL FAIL"},
+    {H4AMC_PUBCOMP_FAIL,"PUBCOMP FAIL"},
+    {H4AMC_SERVER_RETAIN_UNAVAILABLE,"SERVER_RETAIN_UNAVAILABLE"},
+    {H4AMC_SHARED_SUBS_UNAVAILABLE,"SHARED_SUB_UNAVAILABLE"},
+    {H4AMC_BAD_SHARED_TOPIC,"BAD_SHARED_TOPIC"},
+    {H4AMC_BAD_TOPIC,"BAD TOPIC"},
+    {H4AMC_WILDCARD_UNAVAILABLE,"SERVER_WILDCARD_UNAVAILBLE"},
+    {H4AMC_ASSIGNED_CLIENTID,"ASSIGNED_CLIENTID"},
+    {H4AMC_NO_AUTHENTICATOR,"NO AUTHENTICATOR ASSIGNED"},
+    {H4AMC_INVALID_AUTH_METHOD,"INVALID AUTH METHOD"}
+#endif
 #endif
 };
 namespace H4AMC_Helpers {
+    uint8_t* poke8(uint8_t * p, uint8_t u){
+        *p++=u;
+        return p;
+    }
     uint8_t* poke16(uint8_t* p,uint16_t u){
         *p++=(u & 0xff00) >> 8;
         *p++=u & 0xff;
@@ -172,10 +190,10 @@ void H4AsyncMQTT::_connect(){
         H4AMC_PRINT1("Already connecting/connected\n");
         return;
     }
-    // [ ] if network connected, proceed, else just follow create AsyncClient if not there. ..
     if (_h4atClient)
         _h4atClient->close();
     
+    // if network connected, proceed, else just follow create AsyncClient if not there. ..
     if (_networkState != H4AMC_NETWORK_CONNECTED) {
         H4AMC_PRINT1("Network is disconnected\n"); // If it's connected, inform with informNetworkState() API
         return;
@@ -214,6 +232,7 @@ void H4AsyncMQTT::_connect(){
     _h4atClient->onError([=](int error,int info){
         H4AMC_PRINT1("onError %d info=%d\n",error,info);
         if(error||info) _notify(error,info);
+        if (error) _state=H4AMC_DISCONNECTED;
         return true;
     });
 
@@ -360,12 +379,14 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled, uint8_
                 H4AMC_PRINT1("INCOMPLIAT SERVER!\n");
                 return;
             }
-            _handleConnackProps(*(traits.properties));
+            _handleConnackProps(props);
+            if (props.isAvailable(PROPERTY_AUTHENTICATION_METHOD))
+                _handleAuthentication(rcode, props);
 #else
         case 0x00:
 #endif
         {
-            if (!_h4atClient->connected()){ // [ ] Generalize this condition?
+            if (_state!=H4AMC_TCP_CONNECTED){
                 H4AMC_PRINT1("ERR Received a delayed CONNACK, Connection was dropped\n");
             } else {
                 _state=H4AMC_RUNNING;
@@ -493,8 +514,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled, uint8_
     }
         break;
     case AUTH:
-        //[x]  Handle Auth request ...
-        // ...
+    {
         switch (rcode) {
         case REASON_SUCCESS:
         case REASON_CONTINUE_AUTHENTICATION:
@@ -505,8 +525,8 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled, uint8_
                 auto& authreason = ret.first;
                 auto& authmethod = ret.second.first;
                 auto& authdata = ret.second.second;
-                // [ ] AuthenticationPacket auth(reason,method,data)
-
+                AuthOptions opts{authreason}; // Might add reason string / user properties ...
+                AuthenticationPacket auth(this,method,data,opts);
             }
             break;
             
@@ -519,7 +539,7 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled, uint8_
             _protocolError(REASON_PROTOCOL_ERROR);
             break;
         }
-
+    }
         break;
 #endif // MQTT5
     default:
@@ -634,13 +654,6 @@ void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
         case PROPERTY_RESPONSE_INFORMATION:
             _serverOptions->response_information = props.getStringProperty(p);
             break;
-            // [ ] Handle Authentication Method and Data...
-/*                     case PROPERTY_AUTHENTICATION_METHOD:
-            _serverOptions->authentication_method = props.getStringProperty(p);
-            break;
-        case PROPERTY_AUTHENTICATION_DATA:
-            _serverOptions->authentication_data = props.getStringProperty(p);
-            break; */
         default:
             break;
         }
@@ -649,6 +662,24 @@ void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
 //     props.dump();
 // #endif
 }
+
+void H4AsyncMQTT::_handleAuthentication(uint8_t reasoncode, MQTT_Properties& props)
+{
+    if (_authenticator){
+        auto method = props.getStringProperty(PROPERTY_AUTHENTICATION_METHOD);
+        auto data = props.getBinaryProperty(PROPERTY_AUTHENTICATION_DATA);
+        auto ret = _authenticator->handle(std::make_pair(static_cast<H4AMC_MQTT_ReasonCode>(reasoncode),std::make_pair(method,data)));
+        auto& authreason = ret.first;
+        auto& authmethod = ret.second.first;
+        auto& authdata = ret.second.second;
+        AuthOptions opts{authreason}; // Might add reason string / user properties ...
+        if (reasoncode==REASON_CONTINUE_AUTHENTICATION)
+            AuthenticationPacket auth(this,method,data,opts);
+    } else {
+        _notify(H4AMC_NO_AUTHENTICATOR);
+    }
+}
+
 bool H4AsyncMQTT::_availableTXAliasSpace() {
     if (_serverOptions)
         return _serverOptions->topic_alias_max > _tx_topic_alias.size();
@@ -996,7 +1027,7 @@ bool H4AsyncMQTT::secureTLS(const u8_t *ca, size_t ca_len, const u8_t *privkey, 
     return true;
 #else
     H4AMC_PRINT1("TLS is not activated within H4AsyncTCP\n");
-    _notify(H4AMC_TLS_UNSUPPORTED);
+    _notify(H4AMC_NO_SSL);
 	return false;
 #endif
 }
@@ -1011,6 +1042,19 @@ H4AMC_AuthInformation SCRAM_Authenticator::handle(H4AMC_AuthInformation data)
 {
     auto rcode = data.first;
     H4AMC_AuthInformation result;
+/* // [ ] Another mechanism to not reply (other than reasoncode on caller side _handleAuthentication() ?)
+    switch (rcode) 
+    {
+    case REASON_SUCCESS: // Doesn't really return usable data. just return empty H4AMC_AuthInformation{};
+        break;
+    case REASON_CONTINUE_AUTHENTICATION:
+        break;
+    case REASON_BAD_AUTHENTICATION_METHOD:
+        break;
+    default:
+        break;
+    } 
+    */
     if (rcode == REASON_CONTINUE_AUTHENTICATION) {
         auto method = data.second.first;
         auto authdata = data.second.second;
@@ -1033,8 +1077,8 @@ H4AMC_AuthInformation SCRAM_Authenticator::handle(H4AMC_AuthInformation data)
                 break;
         }
         
-    } else /* if (rcode == REASON_SUCCESS) */ {
-        // ERROR!
+    } else if (rcode == REASON_SUCCESS) { // Within SUCCESS CONNACK
+    // Might store data...
     }
 	return result;
 }

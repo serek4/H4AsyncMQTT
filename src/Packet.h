@@ -59,7 +59,7 @@ class Packet {
                     return total;
                 }
 
-                uint8_t*          _embedUserProperties(uint8_t* p, H4AMC_USER_PROPERTIES& props) {
+                uint8_t*          _serializeUserProperties(uint8_t* p, H4AMC_USER_PROPERTIES& props) {
                     p=__embedPassedProps(p, props);
                     p=__embedStaticProps(p);
                     return __embedDynamicProps(p);
@@ -146,3 +146,10 @@ class PublishPacket: public Packet {
         PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, const uint8_t* payload, size_t length, H4AMC_PublishOptions opts_retain);
         PacketID getId(){ return _id; }
 };
+
+#if MQTT5
+class AuthenticationPacket: public Packet {
+    public:
+        AuthenticationPacket(H4AsyncMQTT* p, const std::string& method, const H4AMC_BinaryData& data, AuthOptions& auth);
+};
+#endif

@@ -10,16 +10,6 @@
 #include <memory>
 #include <H4Tools.h>
 #include <set>
-// #if __cplusplus < 201400
-// namespace std
-// {
-// 	template <typename T, typename... Args>
-// 	std::unique_ptr<T> make_unique(Args &&...args)
-// 	{
-// 		return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-// 	}
-// }
-// #endif
 #if H4AMC_DEBUG
 	#define H4AMC_PRINTF(...) Serial.printf(__VA_ARGS__)
     template<int I, typename... Args>
@@ -71,6 +61,8 @@ enum H4AMC_FAILURE {
     H4AMC_BAD_TOPIC,
     H4AMC_WILDCARD_UNAVAILABLE,
     H4AMC_ASSIGNED_CLIENTID,
+    H4AMC_NO_AUTHENTICATOR,
+    H4AMC_INVALID_AUTH_METHOD,
 #endif
 //    H4AMC_KEEPALIVE_TOO_LONG,
     H4AMC_ERROR_MAX

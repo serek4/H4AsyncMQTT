@@ -61,7 +61,8 @@ H4AMC_BAD_SHARED_TOPIC, // You supplied a bad shared topic.
 H4AMC_BAD_TOPIC, // You're trying to publish to bad topic (as one containing a wild card)
 H4AMC_WILDCARD_UNAVAILABLE, // If you're tring to subscribe using a wildcard wherein the server doesn't support/permit it.
 H4AMC_ASSIGNED_CLIENTID,// The server just assigned you a clientID
-
+H4AMC_NO_AUTHENTICATOR, // The library failed to find an authenticator assigned.
+H4AMC_INVALID_AUTH_METHOD, // The Authenticator packet to send doesn't hold a method.
 */
 ```
 

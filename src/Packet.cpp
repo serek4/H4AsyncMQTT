@@ -129,19 +129,15 @@ void Packet::_build(){
     if(snd_buf){
         *snd_buf++=_controlcode;
         for(auto const& r:rl) *snd_buf++=r;
-        // if(_hasId) snd_buf=_poke16(snd_buf,_id); // Responsibility of _varHeader()
         snd_buf=_varHeader(snd_buf);
         _protocolPayload(snd_buf,virgin);
         auto isPublish = (_controlcode & 0xf0) == PUBLISH;
-#if H4AMC_DEBUG
-        // auto isSubUnsub = _controlcode != SUBSCRIBE && _controlcode != UNSUBSCRIBE;
-        if(_controlcode==CONNECT) mqttTraits traits(virgin,_bs); // Only print for ConnectPacket
-#endif
 #if MQTT5
-        if (_controlcode!=CONNECT && _controlcode!=AUTH && _parent->_serverOptions->maximum_packet_size < _bs) { // [ ] Apply in each packet by predicting the payload size and preventing user properties and reason strings??
+        if (_controlcode!=CONNECT && _controlcode!=AUTH && _parent->_serverOptions->maximum_packet_size < _bs) {
             H4AMC_PRINT1("Server doesn't permit that size\n");
             _notify(H4AMC_OUTBOUND_PUB_TOO_BIG, _bs);
-            /* if (!(isPublish && !_id))  */mbx::clear(virgin);
+            if (_id) _parent->_ACKoutbound(_id); // Discard and clear
+            else mbx::clear(virgin); // clear data
             return;
         }
 #endif
@@ -150,12 +146,12 @@ void Packet::_build(){
         bool send=true;
         if (isPublish && _id){
             send = _parent->_canPublishQoS(_id);
-        }        
+        }
         if (send)
 #endif
-        _parent->_send(virgin,_bs,isPublish && !_id || _controlcode==CONNECT); // Might also copy further for AUTH/DISCONNECT/...
+        _parent->_send(virgin,_bs,!_id); // Might also copy further for AUTH/DISCONNECT/...
 
-        if (isPublish && !_id) mbx::clear(virgin); // For QoS0
+        if (!_id) mbx::clear(virgin); // For QoS0, AUTH, CONNECT (OR Any Packet other that PUBLISH QoS>0 && Sub/UnSub)
     } else _parent->_notify(ERR_MEM,_bs);
 }
 
@@ -257,7 +253,7 @@ void Packet::_multiTopic(std::set<std::string> topics,H4AMC_SubscriptionOptions 
             if (use_subId && !unsub)
                 p = MQTT_Properties::serializeProperty(PROPERTY_SUBSCRIPTION_IDENTIFIER, p, used_subId);
 #endif // MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
-            p = _embedUserProperties(p, opts.getUserProperties());
+            p = _serializeUserProperties(p, opts.getUserProperties());
             return p;
         };
 #endif // MQTT5
@@ -415,7 +411,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 #if MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION
             p = MQTT_Properties::serializeProperty(PROPERTY_REQUEST_RESPONSE_INFORMATION, p, MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION);
 #endif
-            p = _embedUserProperties(p, dummy);
+            p = _serializeUserProperties(p, dummy);
             return p;
         };
 
@@ -438,8 +434,9 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
         p_pos = _willproperties(p_pos);
 #endif
         while(!_blox.empty()) p_pos = _applyfront(p_pos);
-        // mqttTraits T(base,_bs);
-        // H4AsyncMQTT::_outbound[0]=T;  // To be released on CONNACK
+#if H4AMC_DEBUG
+        mqttTraits T(base,_bs);
+#endif
     };
     _build();
 }
@@ -447,100 +444,155 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 PublishPacket::PublishPacket(H4AsyncMQTT* p,const char* topic, uint8_t qos, const uint8_t* payload, size_t length, H4AMC_PublishOptions opts_retain):
     _topic(topic),_qos(qos),_retain(opts_retain.getRetained()),_length(length),Packet(p,PUBLISH) {
 
-        if(length < getMaxPayloadSize()){
+    if(length < getMaxPayloadSize()){
 #if MQTT5
-            auto& props = opts_retain.getProperties();
+        auto& props = opts_retain.getProperties();
 #if H4AMC_ENABLE_CHECKS
-            auto& svrOpts = _parent->_serverOptions;
-            if (svrOpts->maximum_qos < _qos)
-                _qos=_parent->_serverOptions->maximum_qos;
-            if (!svrOpts->retain_available && _retain) {
-                _notify(H4AMC_SERVER_RETAIN_UNAVAILABLE);
-                _retain=false; // Otherwise abort the publish...
-            }
-#endif
-#endif
-            _begin=[&, this, topic]{ 
-
-#if MQTT5
-                if (!_parent->_isTXAliasAvailable(_topic)) { //Fresh topic OR Server Topic Alias MAX got exceeded.
-                    _stringblock(_topic);
-                } else {
-                    _stringblock(std::string()); // Empty string.
-                }
-#else
-                _stringblock(_topic);
-#endif
-                _bs+=_length;
-                byte flags=_retain;
-                // flags|=(_dup << 3);
-            //
-                if(_qos) {
-                    _id=++_parent->_nextId;
-                    flags|=(_qos << 1);
-                }
-                _controlcode|=flags;
-#if MQTT5
-            // [x] Add the properties to the length (property length) + store them
-                // [ ] ProposeTXAlias() and save it - on PUBACK/PUBREC confirmTXAlias()
-                // [ ] Make assigning topic aliases available only for QoS1 and QoS2 only. 
-                if (_parent->_isTXAliasAvailable(topic)) {
-                    props.topic_alias = _parent->_getTXAlias(topic);
-                } else if (_parent->_availableTXAliasSpace()) {
-                    props.topic_alias = _parent->_assignTXAlias(topic);
-                }
-
-                if (props.payload_format_indicator) _propertyLength+=2; // 1B + 1
-                if (props.message_expiry_interval)  _propertyLength+=5; // 4B + 1
-                if (props.response_topic.length())  _propertyLength+=3+props.response_topic.length(); // 2 for size, 1 PropID
-                if (props.correlation_data.size())  _propertyLength+=3+props.correlation_data.size();
-                if (props.topic_alias)              _propertyLength+=3; // 2B + 1
-                if (props.content_type.length())    _propertyLength+=3+props.content_type.length();
-                
-                // No subscription ID from Client
-                _propertyLength += _fetchUserProperties(props.user_properties);
-
-
-                _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
-                _properties = [this, &props](uint8_t* p) {
-                    p = H4AMC_Helpers::encodeVariableByteInteger(p, _propertyLength);
-                    if (props.payload_format_indicator)
-                        p=MQTT_Properties::serializeProperty(PROPERTY_PAYLOAD_FORMAT_INDICATOR, p, props.payload_format_indicator);
-                    if (props.message_expiry_interval)
-                        p=MQTT_Properties::serializeProperty(PROPERTY_MESSAGE_EXPIRY_INTERVAL, p, props.message_expiry_interval);
-                    if (props.response_topic.length())
-                        p=MQTT_Properties::serializeProperty(PROPERTY_RESPONSE_TOPIC, p, props.response_topic);
-                    if (props.correlation_data.size())
-                        p=MQTT_Properties::serializeProperty(PROPERTY_CORRELATION_DATA, p, props.correlation_data);
-                    if (props.topic_alias)
-                        p=MQTT_Properties::serializeProperty(PROPERTY_TOPIC_ALIAS, p, props.topic_alias);
-                    if (props.content_type.length())
-                        p=MQTT_Properties::serializeProperty(PROPERTY_CONTENT_TYPE, p, props.content_type);
-
-
-                    p=_embedUserProperties(p, props.user_properties);
-                    return p;
-                };
-#endif
-            };
-            _varHeader=[this](uint8_t* p_pos){ // To embed the Topic name.
-                p_pos = _applyfront(p_pos);
-                if(_id) p_pos=_poke16(p_pos,_id);
-                // Properties...
-#if MQTT5
-                p_pos=_properties(p_pos);
-#endif
-                return p_pos;
-            };
-
-            _protocolPayload=[=](uint8_t* p,uint8_t* base){ 
-                memcpy(p,payload,_length);
-                mqttTraits T(base,_bs);
-                if(_qos) H4AsyncMQTT::_outbound[_id]=T;
-            };
-            _build();
-        } else {
-            H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,getMaxPayloadSize());
-            _notify(H4AMC_OUTBOUND_PUB_TOO_BIG,length);
+        auto& svrOpts = _parent->_serverOptions;
+        if (svrOpts->maximum_qos < _qos)
+            _qos=_parent->_serverOptions->maximum_qos;
+        if (!svrOpts->retain_available && _retain) {
+            _notify(H4AMC_SERVER_RETAIN_UNAVAILABLE);
+            _retain=false; // Otherwise abort the publish...
         }
+#endif
+#endif
+        _begin=[&, this, topic]{ 
+
+#if MQTT5
+            if (!_parent->_isTXAliasAvailable(_topic)) { //Fresh topic OR Server Topic Alias MAX got exceeded.
+                _stringblock(_topic);
+            } else {
+                _stringblock(std::string()); // Empty string.
+            }
+#else
+            _stringblock(_topic);
+#endif
+            _bs+=_length;
+            byte flags=_retain;
+            // flags|=(_dup << 3);
+        //
+            if(_qos) {
+                _id=++_parent->_nextId;
+                flags|=(_qos << 1);
+            }
+            _controlcode|=flags;
+#if MQTT5
+        // [x] Add the properties to the length (property length) + store them
+            // [ ] ProposeTXAlias() and save it - on PUBACK/PUBREC confirmTXAlias()
+            // [ ] Make assigning topic aliases available only for QoS1 and QoS2 only. 
+            if (_parent->_isTXAliasAvailable(topic)) {
+                props.topic_alias = _parent->_getTXAlias(topic);
+            } else if (_parent->_availableTXAliasSpace()) {
+                props.topic_alias = _parent->_assignTXAlias(topic);
+            }
+
+            if (props.payload_format_indicator) _propertyLength+=2; // 1B + 1
+            if (props.message_expiry_interval)  _propertyLength+=5; // 4B + 1
+            if (props.response_topic.length())  _propertyLength+=3+props.response_topic.length(); // 2 for size, 1 PropID
+            if (props.correlation_data.size())  _propertyLength+=3+props.correlation_data.size();
+            if (props.topic_alias)              _propertyLength+=3; // 2B + 1
+            if (props.content_type.length())    _propertyLength+=3+props.content_type.length();
+            
+            // No subscription ID from Client
+            _propertyLength += _fetchUserProperties(props.user_properties);
+
+
+            _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
+            _properties = [this, &props](uint8_t* p) {
+                p = H4AMC_Helpers::encodeVariableByteInteger(p, _propertyLength);
+                if (props.payload_format_indicator)
+                    p=MQTT_Properties::serializeProperty(PROPERTY_PAYLOAD_FORMAT_INDICATOR, p, props.payload_format_indicator);
+                if (props.message_expiry_interval)
+                    p=MQTT_Properties::serializeProperty(PROPERTY_MESSAGE_EXPIRY_INTERVAL, p, props.message_expiry_interval);
+                if (props.response_topic.length())
+                    p=MQTT_Properties::serializeProperty(PROPERTY_RESPONSE_TOPIC, p, props.response_topic);
+                if (props.correlation_data.size())
+                    p=MQTT_Properties::serializeProperty(PROPERTY_CORRELATION_DATA, p, props.correlation_data);
+                if (props.topic_alias)
+                    p=MQTT_Properties::serializeProperty(PROPERTY_TOPIC_ALIAS, p, props.topic_alias);
+                if (props.content_type.length())
+                    p=MQTT_Properties::serializeProperty(PROPERTY_CONTENT_TYPE, p, props.content_type);
+
+
+                p=_serializeUserProperties(p, props.user_properties);
+                return p;
+            };
+#endif
+        };
+        _varHeader=[this](uint8_t* p_pos){ // To embed the Topic name.
+            p_pos = _applyfront(p_pos);
+            if(_id) p_pos=_poke16(p_pos,_id);
+            // Properties...
+#if MQTT5
+            p_pos=_properties(p_pos);
+#endif
+            return p_pos;
+        };
+
+        _protocolPayload=[=](uint8_t* p,uint8_t* base){ 
+            memcpy(p,payload,_length);
+            mqttTraits T(base,_bs);
+            if(_qos) H4AsyncMQTT::_outbound[_id]=T;
+        };
+        _build();
+    } else {
+        H4AMC_PRINT1("PUB %d MPL=%d: NO CAN DO\n",length,getMaxPayloadSize());
+        _notify(H4AMC_OUTBOUND_PUB_TOO_BIG,length);
+    }
 }
+
+#if MQTT5
+AuthenticationPacket::AuthenticationPacket(H4AsyncMQTT *p, const std::string &method, const H4AMC_BinaryData &data,
+                                           AuthOptions& auth) : Packet(p, AUTH)
+{
+
+    _begin = [&]{
+        // [x] Calculate size
+        // [x] Define _properties
+        if (!method.length()){
+            H4AMC_PRINT1("Invalid Method!\n");
+            _notify(H4AMC_INVALID_AUTH_METHOD);
+            return;
+        }
+        _bs+=1;//reason
+
+        _propertyLength += method.length() + 3;
+        _propertyLength += data.size() + 3;
+#if AUTHPACKET_REASONSTR_USERPROPS
+        if (auth.reasonStr.length()) _propertyLength += auth.reasonStr.length() + 3;
+        _propertyLength += _fetchUserProperties(auth.props);
+#else
+        _propertyLength += _fetchUserProperties(dummy);
+#endif
+
+        _bs += _propertyLength + H4AMC_Helpers::varBytesLength(_propertyLength);
+
+        _properties = [&](uint8_t* p) {
+            p = H4AMC_Helpers::encodeVariableByteInteger(p, _propertyLength);
+            p = MQTT_Properties::serializeProperty(PROPERTY_AUTHENTICATION_METHOD, p, method);
+            p = MQTT_Properties::serializeProperty(PROPERTY_AUTHENTICATION_DATA, p, data);
+#if AUTHPACKET_REASONSTR_USERPROPS
+            p = _serializeUserProperties(p, auth.props);
+            if (auth.reasonStr.length()) 
+                p = MQTT_Properties::serializeProperty(PROPERTY_REASON_STRING, p, auth.reasonStr);
+#else
+            p = _serializeUserProperties(p, dummy);
+#endif
+            return p;
+        };
+    };
+    _varHeader = [&](uint8_t* p) {
+        p = H4AMC_Helpers::poke8(p, auth.code);
+        p = _properties(p);
+        return p;
+    };
+#if H4AMC_DEBUG
+    _protocolPayload = [&](uint8_t* p, uint8_t* base) { // No need, it holds no payload.
+        mqttTraits T(base,_bs);
+        return p;
+    };
+#endif
+    _build();
+}
+#endif

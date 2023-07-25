@@ -70,6 +70,17 @@ struct SubscriptionResource {
     // SubscriptionResource(H4AMC_cbMessage cb, std::set<std::string> topics) : cb(cb), topix(topics) {}
 };
 #endif // MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
+#define AUTHPACKET_REASONSTR_USERPROPS 0
+struct AuthOptions {
+    H4AMC_MQTT_ReasonCode code;
+#if AUTHPACKET_REASONSTR_USERPROPS
+    std::string reasonStr;
+    H4AMC_USER_PROPERTIES props;
+    AuthOptions(H4AMC_MQTT_ReasonCode code, H4AMC_USER_PROPERTIES properties={}, const std::string& reason_string="") : code(code), props(properties), reasonStr(reason_string) {}
+#else
+    AuthOptions(H4AMC_MQTT_ReasonCode code) :code(code){}
+#endif
+};
 #endif // MQTT5
 class H4AMC_SubscriptionOptions {
     uint8_t qos;
@@ -336,6 +347,7 @@ class H4AsyncMQTT {
 #if MQTT5
                 void                _protocolError(H4AMC_MQTT_ReasonCode reason);
                 void                _handleConnackProps(MQTT_Properties& props);
+                void                _handleAuthentication(uint8_t reasoncode, MQTT_Properties& props);
                 void                _redirect(MQTT_Properties& props);
                 void                _handleReasonString(MQTT_Properties& props) {
                                         if (_cbReason && props.isAvailable(PROPERTY_REASON_STRING))
