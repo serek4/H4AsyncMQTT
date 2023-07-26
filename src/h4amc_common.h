@@ -157,6 +157,7 @@ enum H4AMC_MQTT_ReasonCode : uint8_t {
 
 using H4AMC_BinaryData            =std::vector<uint8_t>;
 namespace H4AMC_Helpers {
+    uint8_t* poke8(uint8_t* p,uint8_t u);
     uint8_t* poke16(uint8_t* p,uint16_t u);
     uint16_t peek16(uint8_t* p);
     uint8_t* encodestring(uint8_t* p,const std::string& s);
