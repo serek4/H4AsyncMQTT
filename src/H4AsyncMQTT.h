@@ -122,38 +122,38 @@ public:
 
 };
 
-
-struct H4AMC_PublishOptions {
+// [ ] Rationalize H4AMC_XXXOptions (struct/class) & APIs
+class H4AMC_PublishOptions {
     friend class H4AsyncMQTT;
     bool retain;
+    MQTT5PublishProperties props;
 
+public:
 #if MQTT5
     H4AMC_PublishOptions(bool retain = false, MQTT5PublishProperties props={}) : props(props), retain(retain) {}
+    MQTT5PublishProperties& getProperties() { return props; }
 #else
     H4AMC_PublishOptions(bool retain = false) : retain(retain) {}
 #endif
     bool getRetained() { return retain; }
-#if MQTT5
-    MQTT5PublishProperties& getProperties() { return props; }
-private:
-    MQTT5PublishProperties props;
-#endif
 };
 
 class H4AMC_WillOptions {
     bool retain;
-
 #if MQTT5
     MQTT5WillProperties props;
 #endif
-public:
-    H4AMC_WillOptions(bool retain = false) : retain(retain) {}
 
-    bool getRetained() { return retain; }
+public:
 #if MQTT5
+    H4AMC_WillOptions(bool retain = false, MQTT5WillProperties properties={}) : retain(retain), props(properties) {}
     MQTT5WillProperties& getProperties() { return props; }
+#else
+    H4AMC_WillOptions(bool retain = false) : retain(retain) {}
 #endif
+    bool getRetained() { return retain; }
 };
+
 struct H4AMC_MessageOptions : public H4AMC_PublishOptions {
     uint8_t qos; // Is there an interest for the user to know qos/dup?
     bool dup;
