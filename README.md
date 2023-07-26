@@ -1,6 +1,7 @@
 ![mbm](assets/pangoplain.jpg)
 
 # Asynchronous ArduinoIDE MQTT 3.1.1 and 5.0 client library for ESP8266, ESP32
+
 ---
 
 Licence: ![licence](https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png) Creative Commons: Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) [Legal Text](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode)
@@ -22,8 +23,8 @@ Licence: ![licence](https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png) Crea
 * [Installation](#installation)
 * [Issues](#issues)
 
-
 # Other Documents
+
 * [Getting Started](docs/101.md)
 * [Payload Handling and "expert" functions](docs/pl.md)
 * [Full API specification](docs/api.md)
@@ -35,21 +36,19 @@ Licence: ![licence](https://i.creativecommons.org/l/by-nc-sa/4.0/80x15.png) Crea
 
 # Features
 
- * Full* MQTT v3.1.1 Qos0/1/2 compliance, session management and recovery
- * Payload size limited only by available heap (~20kB on ESP8266, ~120kb on ESP32)
- * TLS support (ESP8266 only)
- * Compile-time multilevel diagnostic
- * Utility functions to view binary payloads and handle as:
-   * C-style string (`char*`)
-   * `std::string`
-   * Arduino `String`
-   * < any arithmetic type >
- * Full error-handling including:
-   * QoS failures*
-   * Subscribe failure
-   * "Killer" packets ( > free available heap) both inbound and outbound
-
-**NB** *No device can *fully* comply with MQTT 3.1.1 QoS unless it has unlimited permanent storage to hold failed QoS messages across reboots. For more in-depth explanation of the reasons, read [Challenges of MQTT QoS on embedded systems](docs/qos.md) 
+* Full* MQTT v3.1.1, MQTT v5.0 Qos0/1/2 compliance, session management and recovery
+* Payload size limited only by available heap (~20kB on ESP8266, ~120kb on ESP32)
+* TLS support (ESP32 only)
+* Compile-time multilevel diagnostic
+* Utility functions to view binary payloads and handle as:
+  * C-style string (`char*`)
+  * `std::string`
+  * Arduino `String`
+  * < any arithmetic type >
+* Full error-handling including:
+  * QoS failures
+  * Subscribe failure
+  * "Killer" packets ( > free available heap) both inbound and outbound
 
 ---
 
@@ -98,12 +97,14 @@ SEE [Installation](#installation)
 |![roadmap](assets/common/armadillo_icon.jpg)|[ArmadilloHTTP](https://github.com/hamzahajeir/ArmadilloHTTP)|Async HTTP/S Client| Simple send/callback of large payloads |
 |![roadmap](assets/common/h4_icon.jpg)|[H4](https://github.com/hamzahajeir/H4)|Scheduler/Async Timers| |
 |![roadmap](assets/common/h4p_icon.jpg)|[H4/Plugins](https://github.com/hamzahajeir/h4plugins)|Full Async IOT Firmware| Webserver, MQTT, OTA, NTP, HTTP etc etc |
+||[H4Plugins_Env](https://github.com/hamzahajeir/h4plugins_env)| PlatformIO Development Environment | With suitable versions across libraries |
 
 ## H4AsyncMQTT installation path
 
 ![pango path](assets/roadmapPangolin.jpg)
 
 ---
+
 ## Compiling
 
 ![performance](assets/lwip.jpg)
@@ -119,7 +120,7 @@ Please see [H4 Installer](https://github.com/philbowles/h4installer)
 
 1. As with all H4 and H4Plugins libraries, please make sure you have read *all* the relevant documentation relating to the issue and watched any videos on the [Youtube channel (instructional videos)](https://www.youtube.com/channel/UCYi-Ko76_3p9hBUtleZRY6g). Please also subscribe to the channel for notifications of news and updates.
 
-2. If you still think there is a problem, then join the [Facebook H4  Support / Discussion](https://www.facebook.com/groups/444344099599131/) group and report the issue briefly there. This is because I visit the group every day, whereas I do not have time to visit 11 github repos every day. Furthermore, it alerts other users to potential problems and allows an initial assessment. 
+2. If you still think there is a problem, then join the [Facebook H4  Support / Discussion](https://www.facebook.com/groups/444344099599131/) group and report the issue briefly there. This is because I visit the group every day, whereas I do not have time to visit 11 github repos every day. Furthermore, it alerts other users to potential problems and allows an initial assessment.
 
 3. If there is a genuine issue then you will be referred to [Raising H4/H4Plugins issues](https://github.com/philbowles/h4plugins/blob/master/docs/issues.md) after which you are advised to create a full github issue report.
 
@@ -127,7 +128,7 @@ Please see [H4 Installer](https://github.com/philbowles/h4installer)
 
 ---
 
-(c) 2021 Phil Bowles h4plugins@gmail.com
+(c) 2021 Phil Bowles <h4plugins@gmail.com>
 
 * [Support me on Patreon](https://patreon.com/esparto)
 * [Youtube channel (instructional videos)](https://www.youtube.com/channel/UCYi-Ko76_3p9hBUtleZRY6g)
