@@ -250,26 +250,27 @@ struct MQTT5MessageProperties {
             if (props.isAvailable(PROPERTY_RESPONSE_TOPIC)) response_topic=props.getStringProperty(PROPERTY_RESPONSE_TOPIC);
             if (props.isAvailable(PROPERTY_CORRELATION_DATA)) correlation_data=props.getBinaryProperty(PROPERTY_CORRELATION_DATA);
         }
-        MQTT5MessageProperties(){}
+        MQTT5MessageProperties(uint8_t indicator = 0, uint32_t expiry = 0, const std::string &contype = {},
+                               const std::string &resptopic = {}, H4AMC_BinaryData correlation = {},
+                               H4AMC_USER_PROPERTIES props = {}) : 
+                               payload_format_indicator(indicator), message_expiry_interval(expiry), content_type(contype), 
+                               response_topic(resptopic), correlation_data(correlation), user_properties(props) {}
 };
 struct MQTT5WillProperties : public MQTT5MessageProperties {
+    MQTT5WillProperties(uint32_t delay, MQTT_Properties& props) : will_delay_interval(delay), MQTT5MessageProperties(props) {}
+    MQTT5WillProperties(uint32_t delay = 0, uint8_t indicator = 0, uint32_t expiry = 0, const std::string &contype = {},
+                           const std::string &resptopic = {}, H4AMC_BinaryData correlation = {},
+                           H4AMC_USER_PROPERTIES props = {}): will_delay_interval(delay), MQTT5MessageProperties(indicator,expiry,contype,resptopic,correlation,props) {
+
+                           }
     uint32_t will_delay_interval;
 };
 struct MQTT5PublishProperties : public MQTT5MessageProperties {
     MQTT5PublishProperties(MQTT_Properties& props) : MQTT5MessageProperties(props) {}
     MQTT5PublishProperties(uint8_t indicator = 0, uint32_t expiry = 0, const std::string &contype = {},
                            const std::string &resptopic = {}, H4AMC_BinaryData correlation = {},
-                           H4AMC_USER_PROPERTIES props = {})
-    {
-            payload_format_indicator = indicator;
-            message_expiry_interval = expiry;
-            content_type = contype;
-            response_topic = resptopic;
-            correlation_data = correlation;
-            user_properties=props;
-    }
+                           H4AMC_USER_PROPERTIES props = {}) : MQTT5MessageProperties(indicator,expiry,contype,resptopic,correlation,props) {}
 
-    // MQTT5PublishProperties(){}
 private:
 	friend class PublishPacket;
     uint16_t topic_alias=0;
