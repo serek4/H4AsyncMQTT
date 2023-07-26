@@ -123,12 +123,9 @@ public:
 };
 
 // [ ] Rationalize H4AMC_XXXOptions (struct/class) & APIs
-class H4AMC_PublishOptions {
+struct H4AMC_PublishOptions {
     friend class H4AsyncMQTT;
     bool retain;
-    MQTT5PublishProperties props;
-
-public:
 #if MQTT5
     H4AMC_PublishOptions(bool retain = false, MQTT5PublishProperties props={}) : props(props), retain(retain) {}
     MQTT5PublishProperties& getProperties() { return props; }
@@ -136,6 +133,10 @@ public:
     H4AMC_PublishOptions(bool retain = false) : retain(retain) {}
 #endif
     bool getRetained() { return retain; }
+#if MQTT5
+private:
+    MQTT5PublishProperties props;
+#endif
 };
 
 class H4AMC_WillOptions {
