@@ -86,7 +86,7 @@ class H4AMC_SubscriptionOptions {
     uint8_t qos;
 #if MQTT5
     H4AMC_cbMessage cb=nullptr;
-    bool nl=MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL;
+    bool nolocal=MQTT5_SUBSCRIPTION_OPTION_NO_LOCAL;
     bool rap=MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED;
     uint8_t rh=MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING;
     H4AMC_USER_PROPERTIES user_properties;
@@ -99,19 +99,19 @@ public:
                               bool retain_as_published = MQTT5_SUBSCRIPTION_OPTION_RETAIN_AS_PUBLISHED,
                               uint8_t retain_handling = MQTT5_SUBSCRIPTION_OPTION_RETAIN_HANDLING,
                               H4AMC_USER_PROPERTIES user_properties =H4AMC_USER_PROPERTIES{}) 
-                              : qos(QoS), cb(callback), nl(no_local), rap(retain_as_published), rh(retain_handling), user_properties(user_properties)
+                              : qos(QoS), cb(callback), nolocal(no_local), rap(retain_as_published), rh(retain_handling), user_properties(user_properties)
     {
     }
 #else
     H4AMC_SubscriptionOptions(uint8_t QoS=0) : qos(QoS) {}
 #endif
 #if MQTT5
-            bool                getNoLocal(){ return nl; }
+            bool                getNoLocal(){ return nolocal; }
             bool                getRetainAsPublished(){ return rap; }
             uint8_t             getRetainHandling(){ return rh; }
             H4AMC_cbMessage     getCallback() { return cb; }
             H4AMC_USER_PROPERTIES& getUserProperties() { return user_properties; }
-            void                setNoLocal(bool value) { nl=value; }
+            void                setNoLocal(bool value) { nolocal=value; }
             void                setRetainAsPublished(bool value) { rap=value; }
             void                setRetainHandling(uint8_t value) { rh=value; }
             void                setCallback(H4AMC_cbMessage callback) {cb=callback; }
