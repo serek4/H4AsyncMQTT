@@ -47,13 +47,15 @@ void printProperties(MQTT5PublishProperties& props) {
 void onMqttConnect(H4AMC_ConnackParam params)
 {
 	Serial.printf("USER: Connected as %s MP=%d\n", mqttClient.getClientId().data(), getMaxPayloadSize());
-	H4AMC_SubscriptionOptions subOpts;
-	subOpts.setQos(2);
-	subOpts.setNoLocal(true);
-	// subOpts.setXXX();
+	if (!params.session) {
+		H4AMC_SubscriptionOptions subOpts;
+		subOpts.setQos(2);
+		subOpts.setNoLocal(true);
+		// subOpts.setXXX();
 
-	mqttClient.subscribe({"test", "multi2", "fully/compliant"}, subOpts);
-	mqttClient.unsubscribe({"multi2", "fully/compliant"});
+		mqttClient.subscribe({"test", "multi2", "fully/compliant"}, subOpts);
+		mqttClient.unsubscribe({"multi2", "fully/compliant"});
+	}
 
 	sender = h4.every(5000, []
 					  {

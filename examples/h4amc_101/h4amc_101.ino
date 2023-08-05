@@ -83,8 +83,10 @@ void onMqttConnect(H4AMC_ConnackParam params) {
   Serial.printf("USER: Connected as %s MP=%d\n",mqttClient.getClientId().data(),getMaxPayloadSize());
 
   Serial.println("USER: Subscribing at QoS 2");
-  mqttClient.subscribe({"test","multi2","fully/compliant"}, 2);
-  mqttClient.unsubscribe({"multi2","fully/compliant"});
+  if (!params.session) {
+    mqttClient.subscribe({"test","multi2","fully/compliant"}, 2);
+    mqttClient.unsubscribe({"multi2","fully/compliant"});
+  }
 
   sender=h4.every(30000,[]{
     Serial.printf("T=%u Publish:\n",millis());

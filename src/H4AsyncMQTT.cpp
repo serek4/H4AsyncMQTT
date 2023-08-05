@@ -950,9 +950,9 @@ std::string H4AsyncMQTT::errorstring(int e){
     #endif
 }
 
-uint16_t H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { return _runGuard([=]{ PublishPacket pub(this,topic,qos,payload,length,opts_retain); return pub.getId(); }, (uint16_t)0); }
+PacketID H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { return _runGuard([=]{ PublishPacket pub(this,topic,qos,payload,length,opts_retain); return pub.getId(); }, (PacketID)0); }
 
-uint16_t H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { 
+PacketID H4AsyncMQTT::publish(const char* topic, const char* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { 
 #if MQTT5
     opts_retain.props.payload_format_indicator=H4AMC_PAYLOAD_FORMAT_STRING;
 #endif

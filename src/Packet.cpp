@@ -34,6 +34,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 
 #if MQTT5
 H4AMC_USER_PROPERTIES dummy;
+H4AMC_USER_PROPERTIES connectProps {{"User-Agent","H4AsyncMQTT v" H4AMC_VERSION}};
 
 uint32_t Packet::__fetchSize(H4AMC_USER_PROPERTIES &props)
 {
@@ -385,7 +386,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 #if MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION
         _propertyLength += 2; // REQUEST RESPONSE INFORMATION ID + 1 byte
 #endif
-        _propertyLength += _fetchUserProperties(dummy); // CALL ONLY ONCE per Packet::Packet()
+        _propertyLength += _fetchUserProperties(connectProps); // CALL ONLY ONCE per Packet::Packet()
         if (_parent->_authenticator) {
             auto ret = _parent->_authenticator->start();
             _authmethod = ret.second.first;
@@ -411,7 +412,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 #if MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION
             p = MQTT_Properties::serializeProperty(PROPERTY_REQUEST_RESPONSE_INFORMATION, p, MQTT_CONNECT_REQUEST_RESPONSE_INFORMATION);
 #endif
-            p = _serializeUserProperties(p, dummy);
+            p = _serializeUserProperties(p, connectProps);
             return p;
         };
 

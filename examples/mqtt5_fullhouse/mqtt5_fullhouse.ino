@@ -57,18 +57,21 @@ void onMqttConnect(H4AMC_ConnackParam params)
 {
 	Serial.printf("USER: Connected as %s MP=%d\n", mqttClient.getClientId().data(), getMaxPayloadSize());
 
-	Serial.println("USER: Subscribing at QoS 2");
-	// mqttClient.subscribe("test", 2);
-	Subscription_Options opts;
+	if (!params.session) {
+		Serial.println("USER: Subscribing at QoS 2");
+		// mqttClient.subscribe("test", 2);
+		Subscription_Options opts;
 
-	mqttClient.subscribe({"test", "multi2", "fully/compliant"}, H4AMC_SubscriptionOptions(2, customSub, false, true, 1)); // qos=2, a callback, No-Local=false, retain-as-published=true, retain handling=1, no User Properties provided 
-	mqttClient.subscribe("flowtest", H4AMC_SubscriptionOptions(2,nullptr,true,true,1));
-	mqttClient.subscribe("$share/Group1/sharetest", H4AMC_SubscriptionOptions(2,shareSub,true,true,1));
+		mqttClient.subscribe({"test", "multi2", "fully/compliant"}, H4AMC_SubscriptionOptions(2, customSub, false, true, 1)); // qos=2, a callback, No-Local=false, retain-as-published=true, retain handling=1, no User Properties provided 
+		mqttClient.subscribe("flowtest", H4AMC_SubscriptionOptions(2,nullptr,true,true,1));
+		mqttClient.subscribe("$share/Group1/sharetest", H4AMC_SubscriptionOptions(2,shareSub,true,true,1));
 
-	mqttClient.unsubscribe({"multi2", "fully/compliant"});
+		mqttClient.unsubscribe({"multi2", "fully/compliant"});
 
-	mqttClient.addDynamicUserProp(PUBLISH, dynamic);
-	mqttClient.addStaticUserProp(PUBLISH,statics);
+		mqttClient.resetUserProps();
+		mqttClient.addDynamicUserProp(PUBLISH, dynamic);
+		mqttClient.addStaticUserProp(PUBLISH,statics);
+	}
 
 	sender = h4.every(5000, []
 					  {

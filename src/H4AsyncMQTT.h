@@ -443,8 +443,8 @@ class H4AsyncMQTT {
                 void                onError(H4AMC_cbError callback){ _cbMQTTError=callback; }
                 void                onMessage(H4AMC_cbMessage callback){ _cbMessage=callback; }
                 void                onPublish(H4AMC_cbPublish callback){ _cbPublish=callback; }
-                uint16_t            publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0, H4AMC_PublishOptions opts={}); // Might embed qos inside opts.???
-                uint16_t            publish(const char* topic,const char* payload, size_t length, uint8_t qos=0, H4AMC_PublishOptions opts={});
+                PacketID            publish(const char* topic,const uint8_t* payload, size_t length, uint8_t qos=0, H4AMC_PublishOptions opts={}); // Might embed qos inside opts.???
+                PacketID            publish(const char* topic,const char* payload, size_t length, uint8_t qos=0, H4AMC_PublishOptions opts={});
 
 #if MQTT5
 #define CAST_TYPE   char
@@ -452,23 +452,23 @@ class H4AsyncMQTT {
 #define CAST_TYPE   uint8_t
 #endif
                 template<typename T>
-                uint16_t publish(const char* topic,T v,const char* fmt="%d",uint8_t qos=0, H4AMC_PublishOptions opts={}){
+                PacketID publish(const char* topic,T v,const char* fmt="%d",uint8_t qos=0, H4AMC_PublishOptions opts={}){
                     char buf[16];
                     sprintf(buf,fmt,v);
                     return publish(topic, reinterpret_cast<const CAST_TYPE*>(buf), strlen(buf), qos, opts);
                 }
 //              Coalesce templates when C++17 available (if constexpr (x))
-                uint16_t xPublish(const char* topic,const char* value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
+                PacketID xPublish(const char* topic,const char* value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
                     return publish(topic,reinterpret_cast<const CAST_TYPE*>(value),strlen(value),qos,opts);
                 }
-                uint16_t xPublish(const char* topic,String value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
+                PacketID xPublish(const char* topic,const String& value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
                     return publish(topic,reinterpret_cast<const CAST_TYPE*>(value.c_str()),value.length(),qos,opts);
                 }
-                uint16_t xPublish(const char* topic,std::string value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
+                PacketID xPublish(const char* topic,const std::string& value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
                     return publish(topic,reinterpret_cast<const CAST_TYPE*>(value.c_str()),value.size(),qos,opts);
                 }
                 template<typename T>
-                uint16_t xPublish(const char* topic,T value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
+                PacketID xPublish(const char* topic,T value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
                     return publish(topic,reinterpret_cast<uint8_t*>(&value),sizeof(T),qos,opts);
                 }
 #ifdef CAST_TYPE
