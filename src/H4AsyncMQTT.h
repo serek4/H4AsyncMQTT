@@ -239,6 +239,11 @@ class mqttTraits {
 #endif
         mqttTraits(){};
         mqttTraits(uint8_t* p,size_t s);
+        mqttTraits (const mqttTraits&) = default;
+        mqttTraits (mqttTraits&&) = default;
+        mqttTraits& operator=(const mqttTraits&) = default;
+        mqttTraits& operator=(mqttTraits&&) = default;
+        ~mqttTraits() = default;
 
         inline  bool            isPublish() { return (type & 0xf0) == PUBLISH; }
         inline  uint8_t*        start() { return data+1+offset; }
@@ -261,6 +266,7 @@ class PublishPacket;
 enum {
     H4AMC_DISCONNECTED,
     H4AMC_CONNECTING,
+    H4AMC_TCP_ERROR,
     H4AMC_TCP_CONNECTED,
     H4AMC_RUNNING
 };
@@ -461,7 +467,7 @@ class H4AsyncMQTT {
                 PacketID xPublish(const char* topic,const char* value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
                     return publish(topic,reinterpret_cast<const CAST_TYPE*>(value),strlen(value),qos,opts);
                 }
-                PacketID xPublish(const char* topic,const String& value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
+                uint16_t xPublish(const char* topic,String value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {
                     return publish(topic,reinterpret_cast<const CAST_TYPE*>(value.c_str()),value.length(),qos,opts);
                 }
                 PacketID xPublish(const char* topic,const std::string& value, uint8_t qos=0, H4AMC_PublishOptions opts={}) {

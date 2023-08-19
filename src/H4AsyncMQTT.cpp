@@ -210,29 +210,32 @@ void H4AsyncMQTT::_connect(){
         h4.queueFunction([=]{ ConnectPacket cp{this}; }); // offload required for esp32 to get off tcpip thread
     });
 
-    _h4atClient->onConnectFail([=](){
-        H4AMC_PRINT1("onConnectFail - reconnect\n");
-        _state = H4AMC_DISCONNECTED;
+    static auto onDisconnect = [this] {
+        if (_state==H4AMC_RUNNING) if (_cbMQTTDisconnect) _cbMQTTDisconnect();
+        _state=H4AMC_DISCONNECTED;
         _h4atClient = nullptr;
         _startReconnector();
+    };
+
+    _h4atClient->onConnectFail([=](){
+        H4AMC_PRINT1("onConnectFail - reconnect\n");
+        onDisconnect();
     });
 
     _h4atClient->onDisconnect([=]{
-        H4AMC_PRINT1("onDisconnect - reconnect\n");
-        if(_state==H4AMC_RUNNING) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
-        _state=H4AMC_DISCONNECTED;
+        H4AMC_PRINT1("onDisconnect - reconnect STATE %d\n", _state);
+        if(_state==H4AMC_RUNNING || _state == H4AMC_TCP_ERROR) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
+        onDisconnect();
 #if MQTT5
         _pending={};
         _inflight=0;
 #endif
-        _h4atClient = nullptr;
-        _startReconnector();
     });
 
     _h4atClient->onError([=](int error,int info){
         H4AMC_PRINT1("onError %d info=%d\n",error,info);
         if(error||info) _notify(error,info);
-        if (error) _state=H4AMC_DISCONNECTED;
+        if (error && _state == H4AMC_RUNNING) _state = H4AMC_TCP_ERROR;
         return true;
     });
 
@@ -845,6 +848,7 @@ void H4AsyncMQTT::_notify(int e,int info){
 void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handleSession
     // Check whether the messages are outdated...
     // OR regularly resend them...?
+    H4AMC_PRINT2("_resendPartialTxns(%d) _outbound=%d\n", availSession, _outbound.size());
     std::vector<uint16_t> morituri;
     H4AMC_PACKET_MAP copy;
     for(auto const& o:_outbound){
@@ -853,13 +857,13 @@ void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handle
             if(m.pubrec){
                 if (!availSession) morituri.push_back(m.id);
                 else {
-                    H4AMC_PRINT4("WE ARE PUBREC'D ATTEMPT @ QOS2: SEND %d PUBREL\n",m.id);
+                    H4AMC_PRINT3("WE ARE PUBREC'D ATTEMPT @ QOS2: SEND %d PUBREL\n",m.id);
                     PubrelPacket prp(this,m.id);
                 }
             }
             else {
                 if (m.isPublish()) {  // set dup & resend ONLY for PUBlISH packets (..?)
-                    H4AMC_PRINT4("SET DUP %d\n", m.id);
+                    H4AMC_PRINT3("SET DUP %d\n", m.id);
                     m.data[0] |= 0x08;
 #if MQTT5
                     if (!m.topic.length()) {
@@ -869,23 +873,20 @@ void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handle
 #endif
                         {
                             morituri.push_back(m.id);
-                            break;
+                            continue;
                         }
                     }
 #endif
                 }
-                H4AMC_PRINT4("RESEND %d\n", m.id);
+                H4AMC_PRINT3("RESEND %d\n", m.id);
                 H4AMC_DUMP4(m.data, m.len);
 #if MQTT5
-                bool send=true;
-
-                if (m.isPublish() && m.id){
-                    send=_canPublishQoS(m.id);
-                }        
-                if (send)
+                if (m.isPublish() && m.id && _canPublishQoS(m.id)){
+                    _send(m.data,m.len,false);
+                }
+#else
+                _send(m.data,m.len,false);
 #endif
-
-                _send(m.data,m.len,false); // [ ] Concatenate all messages
             }
         }
         else {
