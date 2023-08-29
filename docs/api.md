@@ -48,6 +48,7 @@ H4AMC_BOGUS_PACKET, // should never happen - server sent malformed / unrecognise
 H4AMC_X_INVALID_LENGTH, // length of payload does not match expected data type in x functions - server sent malformed message - SERIOUS PROBLEM
 H4AMC_USER_LOGIC_ERROR,  // Calling any API that requires a connection to the server
 H4AMC_NO_SSL, // Tried to call secureTLS() but you've not built correctly, refer to tls document
+H4AMC_NOT_RUNNING, // The library isn't connected to the server at the moment!
 // FOR MQTT5 ONLY:
 H4AMC_SERVER_DISCONNECT, // the server sends Disconnect.
 H4AMC_NO_SERVEROPTIONS, // No server options found!
@@ -63,6 +64,7 @@ H4AMC_WILDCARD_UNAVAILABLE, // If you're tring to subscribe using a wildcard whe
 H4AMC_ASSIGNED_CLIENTID,// The server just assigned you a clientID
 H4AMC_NO_AUTHENTICATOR, // The library failed to find an authenticator assigned.
 H4AMC_INVALID_AUTH_METHOD, // The Authenticator packet to send doesn't hold a method.
+H4AMC_SUBID_NOT_FOUND     // Invalid subscription-id which tried to unsubscribe with
 */
 ```
 

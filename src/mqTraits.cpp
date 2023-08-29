@@ -252,17 +252,17 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                     if(qos){ id=_peek16(ii);ii+=2; }
                     protocolpayload=ii;
 #if MQTT5
-                    if (*ii) { // Properties (Property length field)
-                        H4AMC_PRINT4("FOUND PROPS\n");
-                        auto ret = initiateProperties(ii);
-                        if (!ret.first) {
-                            protocolpayload = ret.second;
-                            _topic_alias=properties->getNumericProperty(PROPERTY_TOPIC_ALIAS);
+                    auto ret = initiateProperties(ii);
+                    protocolpayload = ret.second; // or ii
+                    H4AMC_PRINT4("FOUND PROPS\n");
+                    if (ret.first == REASON_SUCCESS) {
+                        _topic_alias = properties->getNumericProperty(PROPERTY_TOPIC_ALIAS);
 #if MQTT_SUBSCRIPTION_IDENTIFIERS_SUPPORT
-                            auto subIds = properties->getNumericProperties(PROPERTY_SUBSCRIPTION_IDENTIFIER);
-                            subscription_ids = std::set<uint32_t>{subIds.begin(), subIds.end()};
+                        auto subIds = properties->getNumericProperties(PROPERTY_SUBSCRIPTION_IDENTIFIER);
+                        subscription_ids = std::set<uint32_t>{subIds.begin(), subIds.end()};
 #endif
-                        }
+                    } else {
+                        malformed_packet = true;
                     }
 #endif
                     payload=protocolpayload;

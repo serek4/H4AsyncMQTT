@@ -51,6 +51,7 @@ H4_INT_MAP H4AsyncMQTT::_errorNames={
     {H4AMC_BOGUS_PACKET,"H4AMC_BOGUS_PACKET"},
     {H4AMC_X_INVALID_LENGTH,"H4AMC_X_INVALID_LENGTH"},
     {H4AMC_USER_LOGIC_ERROR,"USER LOGIC ERROR"},
+    {H4AMC_NOT_RUNNING,"NOT RUNNING"},
     {H4AMC_NO_SSL,"H4AMC_NO_SSL"},
 //    {H4AMC_KEEPALIVE_TOO_LONG,"KEEPALIVE TOO LONG: MUST BE < H4AS_SCAVENGE_FREQ"},
 #if MQTT5
@@ -68,6 +69,7 @@ H4_INT_MAP H4AsyncMQTT::_errorNames={
     {H4AMC_ASSIGNED_CLIENTID,"ASSIGNED_CLIENTID"},
     {H4AMC_NO_AUTHENTICATOR,"NO AUTHENTICATOR ASSIGNED"},
     {H4AMC_INVALID_AUTH_METHOD,"INVALID AUTH METHOD"}
+    {H4AMC_SUBID_NOT_FOUND,"SUBID NOT FOUND"}
 #endif
 #endif
 };
@@ -908,7 +910,7 @@ void H4AsyncMQTT::_resendPartialTxns(bool availSession){ // [ ] Rename to handle
 
 void H4AsyncMQTT::_runGuard(H4AMC_FN_VOID f){
     if(_state==H4AMC_RUNNING) f();
-    else _notify(0,H4AMC_USER_LOGIC_ERROR);
+    else _notify(0,H4AMC_NOT_RUNNING);
 }
 
 void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,H4AMC_RCX_ID,true); }
@@ -983,7 +985,7 @@ void H4AsyncMQTT::unsubscribe(uint32_t subscription_id) {
     if (_subsResources.count(subscription_id)) { 
         _runGuard([=]{ UnsubscribePacket usp(this, _subsResources[subscription_id].topix); });
     } else {
-        _notify(0,H4AMC_USER_LOGIC_ERROR);
+        _notify(0,H4AMC_SUBID_NOT_FOUND);
     }
 }
 #endif
