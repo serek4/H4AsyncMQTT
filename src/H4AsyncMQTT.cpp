@@ -226,8 +226,7 @@ void H4AsyncMQTT::_connect(){
 
     _h4atClient->onDisconnect([=]{
         H4AMC_PRINT1("onDisconnect - reconnect STATE %d\n", _state);
-        if(_state==H4AMC_RUNNING || _state == H4AMC_TCP_ERROR) if(_cbMQTTDisconnect) _cbMQTTDisconnect();
-        onDisconnect();
+        if(_state==H4AMC_RUNNING || _state == H4AMC_TCP_ERROR) onDisconnect();
 #if MQTT5
         _pending={};
         _inflight=0;
