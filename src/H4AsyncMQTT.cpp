@@ -68,8 +68,11 @@ H4_INT_MAP H4AsyncMQTT::_errorNames={
     {H4AMC_WILDCARD_UNAVAILABLE,"SERVER_WILDCARD_UNAVAILBLE"},
     {H4AMC_ASSIGNED_CLIENTID,"ASSIGNED_CLIENTID"},
     {H4AMC_NO_AUTHENTICATOR,"NO AUTHENTICATOR ASSIGNED"},
-    {H4AMC_INVALID_AUTH_METHOD,"INVALID AUTH METHOD"}
-    {H4AMC_SUBID_NOT_FOUND,"SUBID NOT FOUND"}
+    {H4AMC_INVALID_AUTH_METHOD,"INVALID AUTH METHOD"},
+    {H4AMC_SUBID_NOT_FOUND,"SUBID NOT FOUND"},
+    {H4AMC_PROTOCOL_ERROR,"PROTOCOL ERROR"},
+    {H4AMC_INCOMPLETE_PACKET,"INCOMPLETE PACKET"}
+
 #endif
 #endif
 };
@@ -354,12 +357,26 @@ void H4AsyncMQTT::_handlePacket(uint8_t* data, size_t len, int n_handled, uint8_
     }
 #endif
     mqttTraits traits(data,len);
-    if(traits.malformed_packet)
-    {
-        H4AMC_PRINT1("Malformed packet! DISCONNECT\n");
-        // [x] MAY Send a DISCONNECT packet to the server with a Reason Code of 0x81 (Malformed Packet)
+    auto pstate = traits.packet_state;
+    int errorNotify = 0;
+    if (pstate != mqttTraits::PacketState::OK) {
 #if MQTT5
-        _protocolError(REASON_MALFORMED_PACKET);
+    H4AMC_MQTT_ReasonCode rcode = REASON_SUCCESS;
+    switch (traits.packet_state)
+    {
+    case mqttTraits::PacketState::MALFORMED:
+        H4AMC_PRINT1("Malformed packet! DISCONNECT\n");
+        rcode = REASON_MALFORMED_PACKET;
+        break;
+    case mqttTraits::PacketState::INCOMPLETE:
+        H4AMC_PRINT1("Incomplete packet!\n");
+        rcode = REASON_PROTOCOL_ERROR;
+        errorNotify = H4AMC_INCOMPLETE_PACKET;
+        break;
+    default:
+        break;
+    }
+    _protocolError(rcode, errorNotify);
 #else
         disconnect();
 #endif
@@ -599,9 +616,10 @@ void H4AsyncMQTT::_redirect(MQTT_Properties& props)
     if (_cbRedirect) (_cbRedirect(reference));
 }
 
-void H4AsyncMQTT::_protocolError(H4AMC_MQTT_ReasonCode reason)
+void H4AsyncMQTT::_protocolError(H4AMC_MQTT_ReasonCode reason, int errNotify)
 {
-    H4AMC_PRINT1("Protocol Error %u:%s\n", reason, mqttTraits::rcnames[reason]);
+    H4AMC_PRINT1("Protocol Error %u:%s err%d\n", reason, mqttTraits::rcnames[reason], errNotify);
+    _notify(errNotify ? errNotify : H4AMC_PROTOCOL_ERROR, errNotify ? reason : 0);
     disconnect(reason);
 }
 void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)

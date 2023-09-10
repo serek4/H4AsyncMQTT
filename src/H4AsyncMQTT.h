@@ -172,7 +172,7 @@ struct H4AMC_ConnackParam {
     H4AMC_ConnackParam(bool session) : session(session){}
 };
 
-class mqttTraits {             
+class mqttTraits {
                 std::string     _decodestring(uint8_t** p);
         inline  uint16_t        _peek16(uint8_t* p){ return (*(p+1))|(*p << 8); }
         inline  uint16_t        _parse16(uint8_t** p) { auto r=_peek16(*p);  return *p+=2, r;}
@@ -198,9 +198,13 @@ class mqttTraits {
                 bool            pubrec=0;
                 size_t          retries=H4AMC_MAX_RETRIES;
                 std::pair<uint8_t*,size_t> next;
-                bool            malformed_packet=false;
                 std::vector<uint8_t> subreasons;
                 uint8_t         reasoncode=0;
+                enum class PacketState : uint8_t {
+                    OK,
+                    MALFORMED,
+                    INCOMPLETE
+                } packet_state;
 #if MQTT5
                 uint32_t        _topic_index=0;
                 uint16_t        _topic_alias=0;
@@ -211,8 +215,8 @@ class mqttTraits {
                 // MQTT_Properties*  properties = nullptr;     
                 MQTT_PROP_PARSERET     initiateProperties(uint8_t* start) { properties=std::make_shared<MQTT_Properties>();
                     auto ret = properties->parseProperties(start);
-                    malformed_packet=ret.first;
-                    if (malformed_packet){
+                    if (ret.first){
+                        packet_state=PacketState::MALFORMED;
                         H4AMC_PRINT1("ERROR: Malformed Packet %d\n", ret.first);
                     }
                     return ret;
@@ -352,7 +356,7 @@ class H4AsyncMQTT {
                 void                _destroyClient();
                 bool                _haveSessionData() { return _inbound.size() || _outbound.size(); }
 #if MQTT5
-                void                _protocolError(H4AMC_MQTT_ReasonCode reason);
+                void                _protocolError(H4AMC_MQTT_ReasonCode reason, int errorNotify=0);
                 void                _handleConnackProps(MQTT_Properties& props);
                 void                _handleAuthentication(uint8_t reasoncode, MQTT_Properties& props);
                 void                _redirect(MQTT_Properties& props);

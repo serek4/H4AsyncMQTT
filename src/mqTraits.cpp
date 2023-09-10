@@ -168,7 +168,7 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
             H4AMC_PRINT1("Malformed Packet!!, remlen=%d\n",remlen);
             // v3.1.1 #4.8 "If the Client or Server encounters a Transient Error while processing an inbound Control Packet it MUST close the Network Connection on which it received that Control Packet"
             // v5.0 "When a Client detects a Malformed Packet or Protocol Error, and a Reason Code is given in the specification, it SHOULD close the Network Connection."
-            malformed_packet = true;
+            packet_state = PacketState::MALFORMED;
             return;
         }
     } while ((encodedByte & 0x80) != 0);
@@ -178,6 +178,8 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
         H4AMC_PRINT4("STUFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFED PACKET!!! %d > %d\n",s,len);
         next.first=p+len;
         next.second=s-len;
+    } else if (len > s) {
+        H4AMC_PRINT1("INCOMPLETE PACKET! rcv %d packetlen %d\n", s, len);
     }
 /*
 #if H4AMC_DEBUG
@@ -262,11 +264,12 @@ mqttTraits::mqttTraits(uint8_t* p,size_t s): data(p){ // Properties .. topic ali
                         subscription_ids = std::set<uint32_t>{subIds.begin(), subIds.end()};
 #endif
                     } else {
-                        malformed_packet = true;
+                        packet_state = PacketState::MALFORMED;
                     }
 #endif
                     payload=protocolpayload;
                     plen=data+len-protocolpayload;
+                    // [ ] compare remlen with plen
                 }
             }
             break;
