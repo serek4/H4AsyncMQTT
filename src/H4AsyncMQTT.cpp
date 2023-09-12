@@ -216,7 +216,7 @@ void H4AsyncMQTT::_connect(){
     });
 
     static auto onDisconnect = [this] {
-        if (_state==H4AMC_RUNNING) if (_cbMQTTDisconnect) _cbMQTTDisconnect();
+        if (_cbMQTTDisconnect) _cbMQTTDisconnect();
         _state=H4AMC_DISCONNECTED;
         _h4atClient = nullptr;
         _startReconnector();
