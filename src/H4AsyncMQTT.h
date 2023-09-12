@@ -204,7 +204,7 @@ class mqttTraits {
                     OK,
                     MALFORMED,
                     INCOMPLETE
-                } packet_state;
+                } packet_state = PacketState::OK;
 #if MQTT5
                 uint32_t        _topic_index=0;
                 uint16_t        _topic_alias=0;
