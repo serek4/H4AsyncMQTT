@@ -417,12 +417,17 @@ class H4AsyncMQTT {
                                         else _notify(0,H4AMC_USER_LOGIC_ERROR);
                                         return 0;
                                     }
+#if H4AMC_AUTO_RECONNECT
         inline  void                _startReconnector();
+#endif
     public:
                 H4AsyncClient*      _h4atClient;
         H4AsyncMQTT();
                 void                connect(const char* url,const char* auth="",const char* pass="",const char* clientId=""/* ,bool clean=true */);
                 void                disconnect(H4AMC_MQTT_ReasonCode reason=REASON_NORMAL_DISCONNECTION);
+#if !H4AMC_AUTO_RECONNECT
+                void                reconnect(){ _connect(); };
+#endif
         static  std::string         errorstring(int e);
                 std::string         getClientId(){ return _assignedClientId.length() ? _assignedClientId : _clientId; }
                 void                onDisconnect(H4AMC_FN_VOID callback){ _cbMQTTDisconnect=callback; }

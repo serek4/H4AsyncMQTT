@@ -209,7 +209,9 @@ void H4AsyncMQTT::_connect(){
     _h4atClient->onConnect([=](){
         H4AMC_PRINT1("on TCP Connect\n");
         _h4atClient->nagle(true);
+#if H4AMC_AUTO_RECONNECT
         h4.cancelSingleton(H4AMC_RCX_ID);
+#endif
         _startPinging();
         _state=H4AMC_TCP_CONNECTED;
         h4.queueFunction([=]{ ConnectPacket cp{this}; }); // offload required for esp32 to get off tcpip thread
@@ -219,7 +221,9 @@ void H4AsyncMQTT::_connect(){
         if (_cbMQTTDisconnect) _cbMQTTDisconnect();
         _state=H4AMC_DISCONNECTED;
         _h4atClient = nullptr;
+#if H4AMC_AUTO_RECONNECT
         _startReconnector();
+#endif
     };
 
     _h4atClient->onConnectFail([=](){
@@ -929,8 +933,9 @@ void H4AsyncMQTT::_runGuard(H4AMC_FN_VOID f){
     if(_state==H4AMC_RUNNING) f();
     else _notify(0,H4AMC_NOT_RUNNING);
 }
-
-void H4AsyncMQTT::_startReconnector(){ h4.every(5000,[=]{ _connect(); },nullptr,H4AMC_RCX_ID,true); }
+#if H4AMC_AUTO_RECONNECT
+void H4AsyncMQTT::_startReconnector(){ h4.every(H4AMC_AUTO_RECONNECT_INTERVAL,[=]{ _connect(); },nullptr,H4AMC_RCX_ID,true); }
+#endif
 //
 //      PUBLIC
 //

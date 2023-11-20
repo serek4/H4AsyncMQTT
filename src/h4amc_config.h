@@ -31,6 +31,10 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 */
 #define H4AMC_VERSION "1.0.0-rc6"
 #define H4AMC_ERROR_BASE 100
+
+#define H4AMC_AUTO_RECONNECT 1
+#define H4AMC_AUTO_RECONNECT_INTERVAL 5000
+
 /*
     Debug levels: 
     0 - No debug messages
