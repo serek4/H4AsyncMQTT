@@ -32,7 +32,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #include<H4AsyncMQTT.h>
 
 #if H4AMC_DEBUG
-    std::map<uint8_t,char*> mqttTraits::pktnames={
+    std::map<uint8_t,const char*> mqttTraits::pktnames={
         {0x10,"CONNECT"},
         {0x20,"CONNACK"},
         {0x30,"PUBLISH"},
@@ -53,7 +53,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
     };
 
 #if MQTT5
-    std::map<H4AMC_MQTT_ReasonCode,char*> mqttTraits::rcnames {
+    std::map<H4AMC_MQTT_ReasonCode,const char*> mqttTraits::rcnames {
         {REASON_SUCCESS, "Success/Normal disconnection/QoS0"},
         {REASON_GRANTED_QOS_0, "Granted QoS 0"},
         {REASON_GRANTED_QOS_1, "Granted QoS 1"},
@@ -100,7 +100,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
         {REASON_WILDCARD_SUBSCRIPTIONS_NOT_SUPPORTED, "Wildcard Subscriptions Not Supported"}
     };
 
-std::map<H4AMC_MQTT5_Property,char*> mqttTraits::propnames {
+std::map<H4AMC_MQTT5_Property,const char*> mqttTraits::propnames {
     {PROPERTY_PAYLOAD_FORMAT_INDICATOR, "Payload Format Indicator"},
     {PROPERTY_MESSAGE_EXPIRY_INTERVAL, "Message Expiry Interval"},
     {PROPERTY_CONTENT_TYPE, "Content Type"},
@@ -130,7 +130,7 @@ std::map<H4AMC_MQTT5_Property,char*> mqttTraits::propnames {
     {PROPERTY_SHARED_SUBSCRIPTION_AVAILABLE, "Shared Subscription Available"}
 };
 #else
-    std::map<uint8_t,char*> mqttTraits::connacknames={
+    std::map<uint8_t,const char*> mqttTraits::connacknames={
         {0x00,"Connection Accepted"},
         {0x01,"Connection Refused, unacceptable protocol version"},
         {0x02,"Connection Refused, identifier rejected"},
@@ -138,7 +138,7 @@ std::map<H4AMC_MQTT5_Property,char*> mqttTraits::propnames {
         {0x04,"Connection Refused, bad user name or password"},
         {0x05,"Connection Refused, not authorized"}
     };
-    std::map<uint8_t,char*> mqttTraits::subacknames={
+    std::map<uint8_t,const char*> mqttTraits::subacknames={
         {0x00,"QoS 0"},
         {0x01,"QoS 1"},
         {0x02,"QoS 2"},

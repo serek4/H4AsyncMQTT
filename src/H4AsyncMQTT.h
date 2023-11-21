@@ -225,13 +225,13 @@ class mqttTraits {
                 
 #if H4AMC_DEBUG
 #if MQTT5
-        static std::map<H4AMC_MQTT_ReasonCode,char*> rcnames;
-        static std::map<H4AMC_MQTT5_Property,char*> propnames;
+        static std::map<H4AMC_MQTT_ReasonCode,const char*> rcnames;
+        static std::map<H4AMC_MQTT5_Property,const char*> propnames;
 #else
-        static  std::map<uint8_t,char*> connacknames;
-        static  std::map<uint8_t,char*> subacknames;
+        static  std::map<uint8_t,const char*> connacknames;
+        static  std::map<uint8_t,const char*> subacknames;
 #endif
-        static std::map<uint8_t,char*> pktnames;
+        static std::map<uint8_t,const char*> pktnames;
         std::string             getPktName(){
             uint8_t t=type&0xf0;
             if(pktnames.count(t)) return pktnames[t];
