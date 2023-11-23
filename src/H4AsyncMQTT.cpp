@@ -40,7 +40,6 @@ std::set<int>           H4AsyncMQTT::_inbound;
 H4AMC_PACKET_MAP        H4AsyncMQTT::_outbound;
 
 H4_INT_MAP H4AsyncMQTT::_errorNames={
-#if H4AMC_DEBUG
     {H4AMC_CONNECT_FAIL,"CONNECT FAIL"},
     {H4AMC_SUBSCRIBE_FAIL,"SUBSCRIBE_FAIL"},
     {H4AMC_UNSUBSCRIBE_FAIL,"UNSUBSCRIBE_FAIL"},
@@ -73,7 +72,6 @@ H4_INT_MAP H4AsyncMQTT::_errorNames={
     {H4AMC_PROTOCOL_ERROR,"PROTOCOL ERROR"},
     {H4AMC_INCOMPLETE_PACKET,"INCOMPLETE PACKET"}
 
-#endif
 #endif
 };
 namespace H4AMC_Helpers {
@@ -967,12 +965,8 @@ void H4AsyncMQTT::disconnect(H4AMC_MQTT_ReasonCode reason) { // [ ] DisconnectPa
 }
 
 std::string H4AsyncMQTT::errorstring(int e){
-    #ifdef H4AMC_DEBUG
-        if(_errorNames.count(e)) return _errorNames[e];
-        else return stringFromInt(e); 
-    #else
-        return stringFromInt(e); 
-    #endif
+    if(_errorNames.count(e)) return _errorNames[e];
+    else return stringFromInt(e);
 }
 
 PacketID H4AsyncMQTT::publish(const char* topic, const uint8_t* payload, size_t length, uint8_t qos, H4AMC_PublishOptions opts_retain) { return _runGuard([=]{ PublishPacket pub(this,topic,qos,payload,length,opts_retain); return pub.getId(); }, (PacketID)0); }
