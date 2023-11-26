@@ -421,7 +421,7 @@ ConnectPacket::ConnectPacket(H4AsyncMQTT* p): Packet(p,CONNECT){
 
     _varHeader=[=](uint8_t* p){
         memcpy(p,&protocol,8);p+=8;
-        p=_poke16(p,_parent->_keepalive);
+        p=_poke16(p,_parent->_keepalive/1000); // time in seconds
 #if MQTT5
         p=_properties(p);
 #endif
