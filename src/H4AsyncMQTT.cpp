@@ -50,7 +50,9 @@ H4_INT_MAP H4AsyncMQTT::_errorNames={
     {H4AMC_BOGUS_PACKET,"H4AMC_BOGUS_PACKET"},
     {H4AMC_X_INVALID_LENGTH,"H4AMC_X_INVALID_LENGTH"},
     {H4AMC_USER_LOGIC_ERROR,"USER LOGIC ERROR"},
+    {H4AMC_CONNECTION_CLOSED,"H4AMC CONNECTION CLOSED"},
     {H4AMC_NOT_RUNNING,"NOT RUNNING"},
+    {H4AMC_UNKNOWN_ERROR,"UNKNOWN ERROR"},
     {H4AMC_NO_SSL,"H4AMC_NO_SSL"},
 //    {H4AMC_KEEPALIVE_TOO_LONG,"KEEPALIVE TOO LONG: MUST BE < H4AS_SCAVENGE_FREQ"},
 #if MQTT5
@@ -949,7 +951,21 @@ void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,cons
         informNetworkState(H4AMC_NETWORK_CONNECTED); // Assume being called on Network Connect.
         _connect();
         H4AsyncClient::_scavenge();
-    } else if(_cbMQTTError) _cbMQTTError(ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
+    } else if(_cbMQTTError) {
+        switch (_state) {
+            case H4AMC_CONNECTING:
+            case H4AMC_TCP_CONNECTED:     // TCP connected but not successfully-CONNACK'd
+                _cbMQTTError(ERR_ALREADY,H4AMC_USER_LOGIC_ERROR);
+                break;
+            case H4AMC_RUNNING:
+                _cbMQTTError(ERR_ISCONN,H4AMC_USER_LOGIC_ERROR);
+                break;
+            
+            default:
+                _cbMQTTError(H4AMC_UNKNOWN_ERROR,_state);
+                break;
+        }
+    }
 }
 
 void H4AsyncMQTT::disconnect(H4AMC_MQTT_ReasonCode reason) { // [ ] DisconnectPacket ...
@@ -959,8 +975,23 @@ void H4AsyncMQTT::disconnect(H4AMC_MQTT_ReasonCode reason) { // [ ] DisconnectPa
         // Reason String
         // User Property
     H4AMC_PRINT1("USER DCX\n");
-    if(_state>=H4AMC_TCP_CONNECTED) _h4atClient->TX(G,2,false); // Generalize to TCP_CONNECTED for MQTT 5.0 prior-Successful-CONNACK disconnect() calls
-    else _notify(ERR_CONN,H4AMC_USER_LOGIC_ERROR);
+    switch (_state) {
+        case H4AMC_RUNNING:
+        case H4AMC_TCP_CONNECTED:
+            _notify(H4AMC_CONNECTION_CLOSED,_state);
+            _h4atClient->TX(G,2,false); // Generalize to TCP_CONNECTED for MQTT 5.0 prior-Successful-CONNACK disconnect() calls
+            break;
+        case H4AMC_CONNECTING:
+            _notify(H4AMC_CONNECT_FAIL,_state);
+            break;
+        case H4AMC_DISCONNECTED:
+            _notify(H4AMC_NOT_RUNNING,H4AMC_USER_LOGIC_ERROR);
+            break;
+        case H4AMC_TCP_ERROR:
+        default:
+            _notify(H4AMC_UNKNOWN_ERROR,_state);
+            break;
+    }
     _destroyClient();
 }
 
