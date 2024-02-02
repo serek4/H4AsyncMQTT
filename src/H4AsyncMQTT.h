@@ -351,7 +351,7 @@ class H4AsyncMQTT {
 
                 void                _startClean();
                 void                _clearQQ(H4AMC_PACKET_MAP* m);
-                void                _startPinging(uint32_t keepalive=KEEP_ALIVE_INTERVAL);
+                void                _startPinging();
                 void                _connect();
                 void                _destroyClient();
                 bool                _haveSessionData() { return _inbound.size() || _outbound.size(); }
@@ -512,7 +512,7 @@ class H4AsyncMQTT {
                     if(len==sizeof(T)) memcpy(reinterpret_cast<T*>(&value),payload,sizeof(T));
                     else _notify(H4AMC_X_INVALID_LENGTH,len);
                 }
-//                void               setKeepAlive(uint16_t keepAlive){ _keepalive=keepAlive; }
+                void               setKeepAlive(uint16_t keepAlive = KEEP_ALIVE_INTERVAL / 1000){ _keepalive = keepAlive * 1000; };
                 void               setWill(const char* topic, uint8_t qos, const char* payload = nullptr, H4AMC_WillOptions opts_retain={});
                 /**! subscribe
                  *              For MQTT v3.3, one can pass QoS value directly.

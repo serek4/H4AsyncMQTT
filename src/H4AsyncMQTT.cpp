@@ -175,10 +175,9 @@ void H4AsyncMQTT::_clearQQ(H4AMC_PACKET_MAP* m){
     m->clear();
 }
 
-void H4AsyncMQTT::_startPinging(uint32_t keepalive)
+void H4AsyncMQTT::_startPinging()
 {
-    _keepalive = keepalive;
-    H4AMC_PRINT1("KA = %d\n",_keepalive - H4AMC_HEADROOM);
+    H4AMC_PRINT1("KA = %d\n",_keepalive);
     static uint8_t PING[]={PINGREQ,0};    
     h4.every(_keepalive - H4AMC_HEADROOM,[=]{
         if(_state==H4AMC_RUNNING){//} && ((millis() - _h4atClient->_lastSeen) > _keepalive)){ // 100 = headroom
@@ -672,7 +671,8 @@ void H4AsyncMQTT::_handleConnackProps(MQTT_Properties& props)
             auto v = props.getNumericProperty(p);
             if (v < _keepalive) {
                 // [x] Change the PINGREQ timer to the new value.
-                _startPinging(v);
+                _keepalive = v;
+                _startPinging();
             }
             break;
         }
@@ -949,8 +949,8 @@ void H4AsyncMQTT::connect(const char* url,const char* auth,const char* pass,cons
         // _cleanStart = clean;
         _clientId = (strlen(clientId) ? clientId:_HAL_uniqueName("H4AMC" H4AMC_VERSION));
         informNetworkState(H4AMC_NETWORK_CONNECTED); // Assume being called on Network Connect.
+        H4AsyncClient::setScavengeFrequency(_keepalive + H4AMC_HEADROOM);
         _connect();
-        H4AsyncClient::_scavenge();
     } else if(_cbMQTTError) {
         switch (_state) {
             case H4AMC_CONNECTING:

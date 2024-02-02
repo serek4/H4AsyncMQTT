@@ -84,7 +84,7 @@ For example, other rights such as publicity, privacy, or moral rights may limit 
 #endif
 
 #define H4AMC_HEADROOM        2000
-#define KEEP_ALIVE_INTERVAL   (H4AS_SCAVENGE_FREQ - H4AMC_HEADROOM)
+#define KEEP_ALIVE_INTERVAL   18000
 
 #define H4AMC_MAX_RETRIES        2 // No need to specify this, as it should just retry publishes at successful CONNACK only???
 #define H4AMC_ENABLE_CHECKS      1
